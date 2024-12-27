@@ -125,7 +125,9 @@ func formatBinaryName(arch string) string {
 }
 
 func formatCompressedName(arch, version string) string {
-	name := fmt.Sprintf("%s-%s-%s_v%s", config.ConfigReader.Binary.Prefix, runtime.GOOS, arch, version)
+	version = strings.TrimPrefix(version, "v")
+
+	name := fmt.Sprintf("%s-%s-%s-v%s", config.ConfigReader.Binary.Prefix, runtime.GOOS, arch, version)
 
 	switch runtime.GOOS {
 	case "windows", "darwin":
@@ -170,9 +172,12 @@ func (u *Updater) getLatestVersion() (string, string, error) {
 
 	version := strings.TrimPrefix(release.TagName, "v")
 
-	// Find the correct asset for current OS and arch
 	arch := normalizeArch(runtime.GOARCH)
 	assetName := formatCompressedName(arch, version)
+
+	u.logger.Debug("Looking for asset",
+		zap.String("assetName", assetName),
+		zap.String("version", version))
 
 	var downloadURL string
 	for _, asset := range release.Assets {

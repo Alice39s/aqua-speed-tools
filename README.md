@@ -16,7 +16,7 @@
 ### :book: 一键脚本
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alice39s/aqua-speed-tools/main/scripts/i.sh | bash
+bash <(curl -fsSL https://raw.githubusercontent.com/alice39s/aqua-speed-tools/main/scripts/i.sh)
 ```
 
 ### :hammer_and_wrench: 从源码编译
