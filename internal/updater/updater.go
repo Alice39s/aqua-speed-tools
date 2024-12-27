@@ -103,6 +103,23 @@ func New(version string) *Updater {
 	}
 }
 
+// NewWithLocalVersion creates a new Updater instance with local version
+func NewWithLocalVersion(defaultVersion string) (*Updater, error) {
+	versionFile := filepath.Join(getInstallDir(), "version.txt")
+	content, err := os.ReadFile(versionFile)
+	if err != nil {
+		// If read failed, use default version
+		return New(defaultVersion), nil
+	}
+
+	parts := strings.Fields(string(content))
+	if len(parts) > 0 {
+		return New(parts[0]), nil
+	}
+
+	return New(defaultVersion), nil
+}
+
 func initLogger() *zap.Logger {
 	logger, err := zap.NewDevelopment()
 	if err != nil {

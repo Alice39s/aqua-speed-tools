@@ -26,9 +26,9 @@ type SpeedTest struct {
 
 // NewSpeedTest creates a new SpeedTest instance
 func NewSpeedTest(cfg config.Config) (*SpeedTest, error) {
-	updater := updater.New("0.0.0") // Start with 0.0.0 version, will be updated by GitHub API
-	if updater == nil {
-		return nil, fmt.Errorf("failed to create updater")
+	updater, err := updater.NewWithLocalVersion("0.0.0") // Start with 0.0.0 version, will be updated by GitHub API
+	if err != nil {
+		return nil, fmt.Errorf("failed to create updater: %w", err)
 	}
 
 	return &SpeedTest{
