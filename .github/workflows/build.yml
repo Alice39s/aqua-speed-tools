@@ -1,0 +1,177 @@
+name: Build and Release
+
+permissions:
+  contents: write
+  packages: write
+  actions: read
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "configs/**"
+      - ".github/**"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.VERSION }}
+      platform: ${{ steps.detect_platform.outputs.PLATFORM }}
+      binary_name: ${{ steps.setup_env.outputs.BINARY_NAME }}
+    strategy:
+      matrix:
+        version:
+          [
+            "linux-amd64",
+            "linux-arm64",
+            "windows-amd64",
+            "darwin-amd64",
+            "darwin-arm64",
+          ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ">=1.22.0"
+          cache: true
+
+      - name: Install UPX
+        run: |
+          UPX_VERSION=$(curl -s https://api.github.com/repos/upx/upx/releases/latest | jq -r .tag_name)
+          wget https://github.com/upx/upx/releases/download/${UPX_VERSION}/upx-${UPX_VERSION#v}-amd64_linux.tar.xz
+          tar -xf upx-${UPX_VERSION#v}-amd64_linux.tar.xz
+          sudo mv upx-${UPX_VERSION#v}-amd64_linux/upx /usr/local/bin/
+          rm -rf upx-${UPX_VERSION#v}-amd64_linux*
+          echo "UPX version: ${UPX_VERSION}"
+
+      - name: Detect Platform
+        id: detect_platform
+        run: |
+          PLATFORM="${{ matrix.version }}"
+          echo "PLATFORM=${PLATFORM}" >> $GITHUB_OUTPUT
+          echo "Current platform: ${PLATFORM}"
+
+      - name: Extract version number
+        id: get_version
+        run: |
+          VERSION=$(jq -r .script.version configs/base.json)
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "VERSION=${VERSION}"
+
+      - name: Setup Build Environment
+        id: setup_env
+        run: |
+          mkdir -p ${{ runner.temp }}/build/out
+          BINARY_NAME="aqua-speed-tools-${{ steps.detect_platform.outputs.PLATFORM }}"
+          echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_OUTPUT
+          echo "BINARY_NAME=${BINARY_NAME}"
+
+      - name: Install Dependencies
+        run: go mod download
+
+      - name: Build Binary
+        env:
+          GOOS: ${{ fromJSON('{"linux-amd64":"linux","linux-arm64":"linux","windows-amd64":"windows","darwin-amd64":"darwin","darwin-arm64":"darwin"}')[matrix.version] }}
+          GOARCH: ${{ fromJSON('{"linux-amd64":"amd64","linux-arm64":"arm64","windows-amd64":"amd64","darwin-amd64":"amd64","darwin-arm64":"arm64"}')[matrix.version] }}
+          CGO_ENABLED: 0
+        run: |
+          OUTPUT_NAME="${{ steps.setup_env.outputs.BINARY_NAME }}"
+          [[ "$GOOS" == "windows" ]] && OUTPUT_NAME="${OUTPUT_NAME}.exe"
+          go build -v -trimpath \
+            -ldflags="-s -w -X 'aqua-speed-tools/internal/config.Version=${{ steps.get_version.outputs.VERSION }}'" \
+            -o "${{ runner.temp }}/build/out/${OUTPUT_NAME}" \
+            ./cmd/speedtest
+
+      - name: Compress Binary with UPX
+        working-directory: ${{ runner.temp }}/build/out
+        run: |
+          if [[ "${{ matrix.version }}" == *"darwin"* ]]; then
+            echo "UPX is disabled for macOS"
+            exit 0
+          fi
+
+          UPX_ARGS="--best"
+          [[ "${{ matrix.version }}" == *"arm"* ]] && UPX_ARGS="${UPX_ARGS} --no-lzma" || UPX_ARGS="${UPX_ARGS} --lzma"
+          upx ${UPX_ARGS} ${{ steps.setup_env.outputs.BINARY_NAME }}*
+
+      - name: Append Checksums
+        working-directory: ${{ runner.temp }}/build/out
+        run: |
+          for file in ${{ steps.setup_env.outputs.BINARY_NAME }}*; do
+            if [[ -f "$file" ]]; then
+              echo -e "\n=== SHA256 ===" >> "$file"
+              sha256sum "$file" | cut -d' ' -f1 >> "$file"
+              echo -e "\n=== SHA512 ===" >> "$file"
+              sha512sum "$file" | cut -d' ' -f1 >> "$file"
+            fi
+          done
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.setup_env.outputs.BINARY_NAME }}
+          path: ${{ runner.temp }}/build/out/${{ steps.setup_env.outputs.BINARY_NAME }}*
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*"
+          path: ${{ runner.temp }}/release
+          merge-multiple: true
+
+      - name: Get Previous Version
+        id: get_prev_version
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const releases = await github.rest.repos.listReleases({ owner, repo });
+            const currentVersion = '${{ needs.build.outputs.version }}';
+
+            console.log(`Releases: ${owner}/${repo}`, releases.data.map(r => r.tag_name));
+            console.log(`Creating version: v${currentVersion}`);
+
+            if (releases.data.length === 0) {
+              core.setOutput('version', 'first-commit');
+              core.setOutput('compare_url', `${context.serverUrl}/${owner}/${repo}/commits`);
+              core.setOutput('changes_text', 'all commits');
+            } else {
+              const previousTag = releases.data[0].tag_name;
+              const previousVersion = previousTag.replace('v', '');
+              console.log(`Previous version: ${previousTag}`);
+              core.setOutput('version', previousVersion);
+              core.setOutput('compare_url', 
+                `${context.serverUrl}/${owner}/${repo}/compare/v${previousVersion}...v${currentVersion}`
+              );
+              core.setOutput('changes_text', `changes since v${previousVersion}`);
+            }
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ runner.temp }}/release/*"
+          token: ${{ github.token }}
+          tag: v${{ needs.build.outputs.version }}
+          name: Release ${{ needs.build.outputs.version }}
+          body: |
+            Release of version ${{ needs.build.outputs.version }}
+
+            [View ${{ steps.get_prev_version.outputs.changes_text }}](${{ steps.get_prev_version.outputs.compare_url }})
+          draft: false
+          prerelease: false
+          allowUpdates: true
+          generateReleaseNotes: true

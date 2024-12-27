@@ -1,0 +1,422 @@
+{
+    "cf": {
+        "name": {
+            "zh": "Cloudflare",
+            "en": "Cloudflare"
+        },
+        "size": 40,
+        "isp": {
+            "zh": "AS13335",
+            "en": "AS13335"
+        },
+        "url": "https://speed.cloudflare.com/",
+        "threads": 10,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "US",
+            "region": null,
+            "city": null,
+            "type": "Anycast"
+        }
+    },
+    "zju": {
+        "name": {
+            "zh": "浙江大学",
+            "en": "Zhejiang University"
+        },
+        "size": 100,
+        "isp": {
+            "zh": "教育网",
+            "en": "CERNET"
+        },
+        "type": "LibreSpeed",
+        "url": "http://speedtest.zju.edu.cn/",
+        "threads": 4,
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": "浙江",
+            "city": "杭州",
+            "type": "教育网"
+        }
+    },
+    "ustc": {
+        "name": {
+            "zh": "中国科学技术大学",
+            "en": "USTC"
+        },
+        "size": 50,
+        "isp": {
+            "zh": "教育网",
+            "en": "CERNET"
+        },
+        "url": "https://test.ustc.edu.cn/",
+        "type": "LibreSpeed",
+        "threads": 4,
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": "安徽",
+            "city": "合肥",
+            "type": "教育网"
+        }
+    },
+    "nuaa": {
+        "name": {
+            "zh": "南京航空航天大学",
+            "en": "NUAA"
+        },
+        "size": 50,
+        "isp": {
+            "zh": "教育网",
+            "en": "CERNET"
+        },
+        "url": "http://speed.nuaa.edu.cn/",
+        "type": "LibreSpeed",
+        "threads": 6,
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": "江苏",
+            "city": "南京",
+            "type": "教育网"
+        }
+    },
+    "xcc": {
+        "name": {
+            "zh": "四川西昌学院",
+            "en": "XCC"
+        },
+        "size": 50,
+        "isp": {
+            "zh": "教育网",
+            "en": "CERNET"
+        },
+        "url": "https://speedtest.xcc.edu.cn/",
+        "type": "LibreSpeed",
+        "threads": 4,
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": "四川",
+            "city": "西昌",
+            "type": "教育网"
+        }
+    },
+    "baiduyun": {
+        "name": {
+            "zh": "百度云盘",
+            "en": "Baidu Netdisk"
+        },
+        "size": 100,
+        "isp": {
+            "zh": "百度云",
+            "en": "Baidu Cloud"
+        },
+        "url": "https://issuecdn.baidupcs.com/issue/netdisk/apk/BaiduNetdiskSetup_wap_share.apk",
+        "threads": 8,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "CDN"
+        }
+    },
+    "bilibili": {
+        "name": {
+            "zh": "哔哩哔哩",
+            "en": "Bilibili"
+        },
+        "size": 5,
+        "isp": {
+            "zh": "阿里云",
+            "en": "Alibaba Cloud"
+        },
+        "url": "https://s3.hdslb.com/bfs/game-static/web/caster/static/script/vue/da3f37d7fd8339357ed671a94941757e/st.zip",
+        "threads": 16,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "CDN"
+        }
+    },
+    "arknights": {
+        "name": {
+            "zh": "明日方舟",
+            "en": "Arknights"
+        },
+        "size": 5,
+        "isp": {
+            "zh": "阿里云OSS",
+            "en": "Alibaba Cloud OSS"
+        },
+        "url": "https://web.hycdn.cn/arknights/official/home_videos/PV04_landscape-00001.ts",
+        "threads": 6,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "OSS"
+        }
+    },
+    "sina": {
+        "name": {
+            "zh": "新浪主站",
+            "en": "Sina"
+        },
+        "size": 3,
+        "isp": {
+            "zh": "新浪混合云",
+            "en": "Sina CDN"
+        },
+        "url": "https://n.sinaimg.cn/tech/transform/352/w151h201/20220511/956b-636c666d96637f8b8d177529581a56b9.gif?",
+        "threads": 16,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "混合CDN"
+        }
+    },
+    "wangyi": {
+        "name": {
+            "zh": "网易主站",
+            "en": "Netease"
+        },
+        "size": 2,
+        "isp": {
+            "zh": "网易混合云",
+            "en": "Netease CDN"
+        },
+        "url": "https://dingyue.ws.126.net/wg2p587YXaQIc3=6sAU2HDMsTZ8Z2Cm25=lL5jRsODoC61564580684072.gif",
+        "threads": 16,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "混合CDN"
+        }
+    },
+    "danzai": {
+        "name": {
+            "zh": "蛋仔派对",
+            "en": "DanZai"
+        },
+        "size": 2,
+        "isp": {
+            "zh": "阿里云",
+            "en": "Alibaba Cloud"
+        },
+        "url": "https://nie.res.netease.com/r/pic/20240617/f4913435-f588-4ddb-81cc-c4def7b30360.png",
+        "threads": 8,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "CDN"
+        }
+    },
+    "yuanshen": {
+        "name": {
+            "zh": "原神官网",
+            "en": "Genshin Impact"
+        },
+        "size": 10,
+        "isp": {
+            "zh": "阿里云",
+            "en": "Alibaba Cloud"
+        },
+        "url": "https://www.yuanshen.com/medias/bg.3e78e808.mp4",
+        "threads": 32,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "CDN"
+        }
+    },
+    "xqtd": {
+        "name": {
+            "zh": "星穹铁道官网",
+            "en": "Star Rail"
+        },
+        "size": 1,
+        "isp": {
+            "zh": "阿里云",
+            "en": "Alibaba Cloud"
+        },
+        "url": "https://fastcdn.mihoyo.com/content-v2/hkrpg/125551/bf4fa83ba349a187fc26ad838b969a08_3726243956231692108.png",
+        "threads": 32,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "OSS"
+        }
+    },
+    "zzz": {
+        "name": {
+            "zh": "绝区零",
+            "en": "Zenless Zone Zero"
+        },
+        "size": 1,
+        "isp": {
+            "zh": "阿里云",
+            "en": "Alibaba Cloud"
+        },
+        "url": "https://webstatic.mihoyo.com/upload/static-resource/2022/04/19/aeefeb96a2a294cf1d7ab7324fd9a492_9102035117345458586.mp3",
+        "threads": 32,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "OSS"
+        }
+    },
+    "iqiyi": {
+        "name": {
+            "zh": "爱奇艺",
+            "en": "iQIYI"
+        },
+        "size": 60,
+        "isp": {
+            "zh": "爱奇艺",
+            "en": "iQIYI"
+        },
+        "url": "https://mesh.if.iqiyi.com/player/upgrade/file/last/IQIYIsetup_app.exe",
+        "threads": 8,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "CDN"
+        }
+    },
+    "xiaohongshu": {
+        "name": {
+            "zh": "小红书",
+            "en": "RED"
+        },
+        "size": 50,
+        "isp": {
+            "zh": "腾讯云",
+            "en": "Tencent Cloud CDN"
+        },
+        "url": "https://dc.xiaohongshu.com/file/pkgs/base/xiaohongshu.apk",
+        "threads": 8,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "CDN"
+        }
+    },
+    "migu": {
+        "name": {
+            "zh": "咪咕快游",
+            "en": "MIGU Quick Game"
+        },
+        "size": 1,
+        "isp": {
+            "zh": "中国移动云",
+            "en": "China Mobile Cloud"
+        },
+        "url": "https://freeserver.migufun.com/resource/beta/picture/system/20201118/20201118144237735.jpg",
+        "threads": 32,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "IDC"
+        }
+    },
+    "pdd": {
+        "name": {
+            "zh": "拼多多",
+            "en": "Pinduoduo"
+        },
+        "size": 50,
+        "isp": {
+            "zh": "网宿",
+            "en": "ChinaNetCenter"
+        },
+        "url": "https://cd.pddpic.com/android_dev/2023-07-28/5c04772968aee57ca690fbe1e7f29467.apk",
+        "threads": 8,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "CDN"
+        }
+    },
+    "alipay": {
+        "name": {
+            "zh": "支付宝",
+            "en": "Alipay"
+        },
+        "size": 18,
+        "isp": {
+            "zh": "阿里云OSS",
+            "en": "Alibaba Cloud OSS"
+        },
+        "url": "https://gw.alipayobjects.com/os/rmsportal/PpisHyUkzJnZltrPyfuD.zip",
+        "threads": 8,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "OSS"
+        }
+    },
+    "yuanmeng": {
+        "name": {
+            "zh": "元梦之星",
+            "en": "YuanMeng"
+        },
+        "size": 60,
+        "isp": {
+            "zh": "腾讯云",
+            "en": "Tencent Cloud CDN"
+        },
+        "url": "https://af34070fd060cf5bcd8a0299feb83e96.v.smtcdns.com/ymzx.lv.game.qq.com/dis_kt_051e943d711166e453474838a5ce5254_1702579567/0b53guaaoaaa2yaex4d37rs6onoda42qabya.f0.mp4?mkey=&f=&sche_type=&cip=&proto=",
+        "threads": 8,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": null,
+            "city": null,
+            "type": "CDN"
+        }
+    },
+    "weixin": {
+        "name": {
+            "zh": "微信",
+            "en": "WeChat"
+        },
+        "size": 2,
+        "isp": {
+            "zh": "上海腾讯云",
+            "en": "Tencent Cloud Shanghai"
+        },
+        "url": "https://wechat.design/uploads/732fe6a47e0e686bac01ad202207daf8/%E5%BE%AE%E4%BF%A1%E9%BB%84%E8%84%B8%E8%AE%BE%E8%AE%A1%E8%A7%84%E8%8C%83_20180306_zinehuang.pdf",
+        "threads": 32,
+        "type": "SingleFile",
+        "geoInfo": {
+            "countryCode": "CN",
+            "region": "上海",
+            "city": "上海",
+            "type": "IDC"
+        }
+    }
+}
