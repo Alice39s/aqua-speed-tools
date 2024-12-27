@@ -10,6 +10,7 @@
     "githubApiBaseUrl": "https://api.github.com",
     "githubRawBaseUrl": "https://raw.githubusercontent.com",
     "githubRepo": "Alice39s/aqua-speed",
+    "githubToolsRepo": "Alice39s/aqua-speed-tools",
     "tablePadding": 2,
     "logLevel": "info"
 }

@@ -69,6 +69,13 @@ func (g *GeoInfo) Validate() error {
 	return nil
 }
 
+type NodeType string
+
+const (
+	SingleFile NodeType = "SingleFile"
+	LibreSpeed NodeType = "LibreSpeed"
+)
+
 type Node struct {
 	Id   string `json:"id"`
 	Name struct {
@@ -80,10 +87,10 @@ type Node struct {
 		Zh string `json:"zh"`
 		En string `json:"en"`
 	} `json:"isp"`
-	Url     string  `json:"url"`
-	Threads uint8   `json:"threads"`
-	Type    string  `json:"type"`
-	GeoInfo GeoInfo `json:"geoInfo"`
+	Url     string   `json:"url"`
+	Threads uint16   `json:"threads"`
+	Type    NodeType `json:"type"`
+	GeoInfo GeoInfo  `json:"geoInfo"`
 }
 
 // Validate checks if Node fields are valid

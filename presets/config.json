@@ -1,5 +1,6 @@
 {
     "cf": {
+        "id": "cf",
         "name": {
             "zh": "Cloudflare",
             "en": "Cloudflare"
@@ -20,6 +21,7 @@
         }
     },
     "zju": {
+        "id": "zju",
         "name": {
             "zh": "浙江大学",
             "en": "Zhejiang University"
@@ -40,6 +42,7 @@
         }
     },
     "ustc": {
+        "id": "ustc",
         "name": {
             "zh": "中国科学技术大学",
             "en": "USTC"
@@ -60,6 +63,7 @@
         }
     },
     "nuaa": {
+        "id": "nuaa",
         "name": {
             "zh": "南京航空航天大学",
             "en": "NUAA"
@@ -80,6 +84,7 @@
         }
     },
     "xcc": {
+        "id": "xcc",
         "name": {
             "zh": "四川西昌学院",
             "en": "XCC"
@@ -100,6 +105,7 @@
         }
     },
     "baiduyun": {
+        "id": "baiduyun",
         "name": {
             "zh": "百度云盘",
             "en": "Baidu Netdisk"
@@ -120,6 +126,7 @@
         }
     },
     "bilibili": {
+        "id": "bilibili",
         "name": {
             "zh": "哔哩哔哩",
             "en": "Bilibili"
@@ -140,6 +147,7 @@
         }
     },
     "arknights": {
+        "id": "arknights",
         "name": {
             "zh": "明日方舟",
             "en": "Arknights"
@@ -160,6 +168,7 @@
         }
     },
     "sina": {
+        "id": "sina",
         "name": {
             "zh": "新浪主站",
             "en": "Sina"
@@ -180,6 +189,7 @@
         }
     },
     "wangyi": {
+        "id": "wangyi",
         "name": {
             "zh": "网易主站",
             "en": "Netease"
@@ -200,6 +210,7 @@
         }
     },
     "danzai": {
+        "id": "danzai",
         "name": {
             "zh": "蛋仔派对",
             "en": "DanZai"
@@ -220,6 +231,7 @@
         }
     },
     "yuanshen": {
+        "id": "yuanshen",
         "name": {
             "zh": "原神官网",
             "en": "Genshin Impact"
@@ -240,6 +252,7 @@
         }
     },
     "xqtd": {
+        "id": "xqtd",
         "name": {
             "zh": "星穹铁道官网",
             "en": "Star Rail"
@@ -260,6 +273,7 @@
         }
     },
     "zzz": {
+        "id": "zzz",
         "name": {
             "zh": "绝区零",
             "en": "Zenless Zone Zero"
@@ -280,6 +294,7 @@
         }
     },
     "iqiyi": {
+        "id": "iqiyi",
         "name": {
             "zh": "爱奇艺",
             "en": "iQIYI"
@@ -300,6 +315,7 @@
         }
     },
     "xiaohongshu": {
+        "id": "xiaohongshu",
         "name": {
             "zh": "小红书",
             "en": "RED"
@@ -320,6 +336,7 @@
         }
     },
     "migu": {
+        "id": "migu",
         "name": {
             "zh": "咪咕快游",
             "en": "MIGU Quick Game"
@@ -340,6 +357,7 @@
         }
     },
     "pdd": {
+        "id": "pdd",
         "name": {
             "zh": "拼多多",
             "en": "Pinduoduo"
@@ -360,6 +378,7 @@
         }
     },
     "alipay": {
+        "id": "alipay",
         "name": {
             "zh": "支付宝",
             "en": "Alipay"
@@ -380,6 +399,7 @@
         }
     },
     "yuanmeng": {
+        "id": "yuanmeng",
         "name": {
             "zh": "元梦之星",
             "en": "YuanMeng"
@@ -400,6 +420,7 @@
         }
     },
     "weixin": {
+        "id": "weixin",
         "name": {
             "zh": "微信",
             "en": "WeChat"

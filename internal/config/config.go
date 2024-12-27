@@ -22,6 +22,7 @@ type Config struct {
 	GithubApiBaseUrl string       `json:"githubApiBaseUrl"`
 	GithubRawBaseUrl string       `json:"githubRawBaseUrl"`
 	GithubRepo       string       `json:"githubRepo"`
+	GithubToolsRepo  string       `json:"githubToolsRepo"`
 	TablePadding     int          `json:"tablePadding"`
 	LogLevel         string       `json:"logLevel"`
 }
@@ -71,6 +72,9 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.GithubRepo == "" {
 		return &ConfigError{Field: "GithubRepo", Message: "cannot be empty"}
+	}
+	if cfg.GithubToolsRepo == "" {
+		return &ConfigError{Field: "GithubToolsRepo", Message: "cannot be empty"}
 	}
 	if cfg.TablePadding < 0 || cfg.TablePadding > 10 {
 		return &ConfigError{Field: "TablePadding", Message: "cannot be negative or greater than 10"}
