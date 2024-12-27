@@ -3,13 +3,13 @@
         "prefix": "aqua-speed"
     },
     "script": {
-        "version": "2.0.0",
+        "version": "2.0.1",
         "prefix": "aqua-speed-tools"
     },
     "githubBaseUrl": "https://github.com",
     "githubApiBaseUrl": "https://api.github.com",
     "githubRawBaseUrl": "https://raw.githubusercontent.com",
-    "githubRepo": "alice39s/aqua-speed-tools",
+    "githubRepo": "alice39s/aqua-speed",
     "tablePadding": 2,
     "logLevel": "info"
 }
