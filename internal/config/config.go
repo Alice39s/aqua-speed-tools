@@ -25,6 +25,7 @@ type Config struct {
 	GithubToolsRepo  string       `json:"githubToolsRepo"`
 	TablePadding     int          `json:"tablePadding"`
 	LogLevel         string       `json:"logLevel"`
+	DownloadTimeout  int          `json:"downloadTimeout"`
 }
 
 // Configuration error type
@@ -78,6 +79,9 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.TablePadding < 0 || cfg.TablePadding > 10 {
 		return &ConfigError{Field: "TablePadding", Message: "cannot be negative or greater than 10"}
+	}
+	if cfg.DownloadTimeout <= 0 {
+		return &ConfigError{Field: "DownloadTimeout", Message: "must be greater than 0"}
 	}
 	// 验证日志级别
 	validLogLevels := map[string]bool{

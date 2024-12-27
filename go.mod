@@ -39,6 +39,7 @@ require (
 )
 
 require (
+	github.com/blang/semver/v4 v4.0.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.18.0
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
