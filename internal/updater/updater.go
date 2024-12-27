@@ -4,12 +4,14 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -36,7 +38,7 @@ func (e *UpdateError) Error() string {
 	return e.Err.Error()
 }
 
-// Wrap error with operation context
+// WrapError wraps an error with an operation context
 func WrapError(op string, err error) error {
 	if err == nil {
 		return nil
@@ -44,8 +46,8 @@ func WrapError(op string, err error) error {
 	return &UpdateError{Op: op, Err: err}
 }
 
+// Base errors
 var (
-	// Define base errors
 	errNoExecutableFound = fmt.Errorf("no executable found in archive")
 	errDownloadFailed    = fmt.Errorf("update download failed")
 	errChecksumMismatch  = fmt.Errorf("file checksum mismatch")
@@ -126,8 +128,11 @@ func formatBinaryName(arch string) string {
 
 func formatCompressedName(arch, version string) string {
 	version = strings.TrimPrefix(version, "v")
+	if arch == "amd64" {
+		arch = "x64"
+	}
 
-	name := fmt.Sprintf("%s-%s-%s-v%s", config.ConfigReader.Binary.Prefix, runtime.GOOS, arch, version)
+	name := fmt.Sprintf("%s-%s-%s_v%s", config.ConfigReader.Binary.Prefix, runtime.GOOS, arch, version)
 
 	switch runtime.GOOS {
 	case "windows", "darwin":
@@ -144,40 +149,112 @@ func getInstallDir() string {
 	return "/etc/aqua-speed"
 }
 
-// getLatestVersion fetches the latest version from GitHub API
-func (u *Updater) getLatestVersion() (string, string, error) {
-	apiURL := fmt.Sprintf("%s/repos/%s/releases/latest", config.ConfigReader.GithubApiBaseUrl, config.ConfigReader.GithubRepo)
+// GitHubClient defines the interface for fetching releases
+type GitHubClient interface {
+	GetLatestRelease(ctx context.Context, apiURL string) (*GitHubRelease, error)
+}
 
-	req, err := http.NewRequest("GET", apiURL, nil)
+// DefaultGitHubClient is the default implementation of GitHubClient
+type DefaultGitHubClient struct {
+	client *http.Client
+	logger *zap.Logger
+}
+
+func NewDefaultGitHubClient(client *http.Client, logger *zap.Logger) *DefaultGitHubClient {
+	return &DefaultGitHubClient{
+		client: client,
+		logger: logger,
+	}
+}
+
+func (c *DefaultGitHubClient) GetLatestRelease(ctx context.Context, apiURL string) (*GitHubRelease, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", fmt.Sprintf("Aqua-Speed-Updater/%s", u.Version))
+	userAgent := fmt.Sprintf("Aqua-Speed-Updater/%s", strings.TrimSpace(config.ConfigReader.Script.Version))
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
-	resp, err := u.client.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to fetch latest version: %w", err)
+		return nil, fmt.Errorf("failed to fetch latest version: %w", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusForbidden {
+		resetTime := resp.Header.Get("X-RateLimit-Reset")
+		return nil, fmt.Errorf("rate limit exceeded, reset at: %s", resetTime)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return nil, fmt.Errorf("GitHub API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
+	bodyReader := io.LimitReader(resp.Body, 10<<20) // 10MB limit
 	var release GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return "", "", fmt.Errorf("failed to decode GitHub response: %w", err)
+	if err := json.NewDecoder(bodyReader).Decode(&release); err != nil {
+		return nil, fmt.Errorf("failed to decode GitHub response: %w", err)
 	}
 
-	version := strings.TrimPrefix(release.TagName, "v")
+	return &release, nil
+}
+
+// GetLatestVersion fetches the latest version and its download URL from GitHub
+func (u *Updater) GetLatestVersion() (string, string, error) {
+	if u == nil {
+		return "", "", fmt.Errorf("updater instance is nil")
+	}
+	if u.client == nil {
+		return "", "", fmt.Errorf("http client is nil")
+	}
+
+	// Validate configuration
+	if strings.TrimSpace(config.ConfigReader.GithubApiBaseUrl) == "" ||
+		strings.TrimSpace(config.ConfigReader.GithubRepo) == "" {
+		return "", "", fmt.Errorf("invalid configuration: empty GitHub API URL or repo")
+	}
+
+	apiURL := fmt.Sprintf("%s/repos/%s/releases/latest",
+		strings.TrimRight(config.ConfigReader.GithubApiBaseUrl, "/"),
+		strings.TrimSpace(config.ConfigReader.GithubRepo))
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	githubClient := NewDefaultGitHubClient(u.client, u.logger)
+	release, err := githubClient.GetLatestRelease(ctx, apiURL)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Validate response data
+	if strings.TrimSpace(release.TagName) == "" {
+		return "", "", fmt.Errorf("invalid release: empty tag name")
+	}
+
+	version := strings.TrimPrefix(strings.TrimSpace(release.TagName), "v")
+	if version == "" {
+		return "", "", fmt.Errorf("invalid version format in tag: %s", release.TagName)
+	}
 
 	arch := normalizeArch(runtime.GOARCH)
+	if arch == "" {
+		return "", "", fmt.Errorf("unsupported architecture: %s", runtime.GOARCH)
+	}
+
 	assetName := formatCompressedName(arch, version)
+	if assetName == "" {
+		return "", "", fmt.Errorf("failed to format asset name for arch: %s, version: %s", arch, version)
+	}
 
 	u.logger.Debug("Looking for asset",
 		zap.String("assetName", assetName),
-		zap.String("version", version))
+		zap.String("version", version),
+		zap.Int("totalAssets", len(release.Assets)))
 
 	var downloadURL string
 	for _, asset := range release.Assets {
@@ -188,15 +265,20 @@ func (u *Updater) getLatestVersion() (string, string, error) {
 	}
 
 	if downloadURL == "" {
-		return "", "", fmt.Errorf("no matching asset found for %s", assetName)
+		return "", "", fmt.Errorf("no matching asset found for %s (available assets: %d)", assetName, len(release.Assets))
+	}
+
+	// Validate download URL
+	if _, err := url.Parse(downloadURL); err != nil {
+		return "", "", fmt.Errorf("invalid download URL %q: %w", downloadURL, err)
 	}
 
 	return version, downloadURL, nil
 }
 
-// needsUpdate checks if an update is needed
-func (u *Updater) needsUpdate() (bool, string) {
-	latestVersion, downloadURL, err := u.getLatestVersion()
+// NeedsUpdate checks if an update is needed
+func (u *Updater) NeedsUpdate() (bool, string) {
+	latestVersion, downloadURL, err := u.GetLatestVersion()
 	if err != nil {
 		u.logger.Error("Failed to get latest version", zap.Error(err))
 		return false, ""
@@ -223,7 +305,7 @@ func (u *Updater) CheckAndUpdate() error {
 	}
 
 	// Check if update is needed
-	needsUpdate, downloadURL := u.needsUpdate()
+	needsUpdate, downloadURL := u.NeedsUpdate()
 	if !needsUpdate {
 		u.logger.Info("Current version is already the latest")
 		return nil
@@ -247,13 +329,20 @@ func (u *Updater) CheckAndUpdate() error {
 	return nil
 }
 
+// performUpdate handles the update process: download, extract, verify, and install
 func (u *Updater) performUpdate(tempDir, downloadURL string) error {
 	binDir := filepath.Join(u.InstallDir, "bin")
 	compressedPath := filepath.Join(tempDir, u.CompressedName)
 
-	// Download file
-	if err := u.downloadFile(compressedPath, downloadURL); err != nil {
+	// Download file with progress
+	downloadedData, err := u.downloadWithProgress(downloadURL)
+	if err != nil {
 		return WrapError("download file", err)
+	}
+
+	// Save the downloaded archive temporarily
+	if err := os.WriteFile(compressedPath, downloadedData, 0644); err != nil {
+		return WrapError("save downloaded archive", err)
 	}
 
 	// Read checksum and binary data from archive
@@ -271,72 +360,190 @@ func (u *Updater) performUpdate(tempDir, downloadURL string) error {
 	return nil
 }
 
-func (u *Updater) verifyAndSaveBinary(destPath string, binaryData []byte, checksum string) error {
-	// Verify binary file checksum
-	if err := u.verifyChecksum(binaryData, checksum); err != nil {
-		return WrapError("checksum verification", err)
-	}
-
-	// Save binary file
-	if err := os.WriteFile(destPath, binaryData, executablePerm); err != nil {
-		u.logger.Error("Failed to save binary file", zap.Error(err))
-		return WrapError("save binary file", err)
-	}
-
-	// Save version and checksum information
-	if err := u.writeVersionInfo(checksum); err != nil {
-		// If writing version information fails, delete the installed binary file
-		os.Remove(destPath)
-		return WrapError("save version information", err)
-	}
-
-	return nil
-}
-
-// downloadFile downloads a file from the given URL
-func (u *Updater) downloadFile(destPath, downloadURL string) error {
-	req, err := http.NewRequest("GET", downloadURL, nil)
+// downloadWithProgress downloads a file from the given URL and shows a progress bar
+func (u *Updater) downloadWithProgress(downloadURL string) ([]byte, error) {
+	resp, err := u.client.Get(downloadURL)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("User-Agent", fmt.Sprintf("Aqua-Speed-Updater/%s", u.Version))
-
-	resp, err := u.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to download file: %w", err)
+		return nil, WrapError("download", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+		return nil, WrapError("download", fmt.Errorf("failed with status: %s", resp.Status))
 	}
-
-	out, err := os.Create(destPath)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer out.Close()
 
 	bar := progressbar.DefaultBytes(
 		resp.ContentLength,
 		"Downloading update",
 	)
 
-	_, err = io.Copy(io.MultiWriter(out, bar), resp.Body)
+	buf := new(bytes.Buffer)
+	_, err = io.Copy(io.MultiWriter(buf, bar), resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to save file: %w", err)
+		return nil, WrapError("download", err)
 	}
 
-	return nil
+	return buf.Bytes(), nil
+}
+
+// ArchiveReader defines the interface for archive readers
+type ArchiveReader interface {
+	Next() (string, io.Reader, error)
+	Close() error
+}
+
+// NewArchiveReader creates a new ArchiveReader based on the archive type
+func NewArchiveReader(path string) (ArchiveReader, error) {
+	if strings.HasSuffix(path, ".zip") {
+		return NewZipArchiveReader(path)
+	}
+	return NewTarXzArchiveReader(path)
+}
+
+// ZipArchiveReader implements ArchiveReader for ZIP files
+type ZipArchiveReader struct {
+	reader *zip.ReadCloser
+	files  []*zip.File
+	index  int
+}
+
+// NewZipArchiveReader creates a new ZipArchiveReader
+func NewZipArchiveReader(path string) (*ZipArchiveReader, error) {
+	reader, err := zip.OpenReader(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open ZIP file: %w", err)
+	}
+	return &ZipArchiveReader{
+		reader: reader,
+		files:  reader.File,
+		index:  0,
+	}, nil
+}
+
+// Next returns the next file in the ZIP archive
+func (z *ZipArchiveReader) Next() (string, io.Reader, error) {
+	if z.index >= len(z.files) {
+		return "", nil, io.EOF
+	}
+	file := z.files[z.index]
+	z.index++
+	rc, err := file.Open()
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to open file %s: %w", file.Name, err)
+	}
+	return file.Name, rc, nil
+}
+
+// Close closes the ZIP archive
+func (z *ZipArchiveReader) Close() error {
+	return z.reader.Close()
+}
+
+// TarXzArchiveReader implements ArchiveReader for TAR.XZ files
+type TarXzArchiveReader struct {
+	file      *os.File
+	tarReader *tar.Reader
+}
+
+// NewTarXzArchiveReader creates a new TarXzArchiveReader
+func NewTarXzArchiveReader(path string) (*TarXzArchiveReader, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open TAR.XZ file: %w", err)
+	}
+
+	xzReader, err := xz.NewReader(f)
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("failed to create XZ reader: %w", err)
+	}
+
+	tarReader := tar.NewReader(xzReader)
+	return &TarXzArchiveReader{
+		file:      f,
+		tarReader: tarReader,
+	}, nil
+}
+
+// Next returns the next file in the TAR.XZ archive
+func (t *TarXzArchiveReader) Next() (string, io.Reader, error) {
+	header, err := t.tarReader.Next()
+	if err != nil {
+		return "", nil, err
+	}
+	return header.Name, t.tarReader, nil
+}
+
+// Close closes the TAR.XZ archive
+func (t *TarXzArchiveReader) Close() error {
+	return t.file.Close()
 }
 
 // readArchiveContents reads checksum and binary data from archive
-func (u *Updater) readArchiveContents(archivePath string) (checksum string, binaryData []byte, err error) {
-	if strings.HasSuffix(archivePath, ".zip") {
-		return u.readZipContents(archivePath)
+func (u *Updater) readArchiveContents(archivePath string) (string, []byte, error) {
+	archiveReader, err := NewArchiveReader(archivePath)
+	if err != nil {
+		return "", nil, WrapError("create archive reader", err)
 	}
-	return u.readTarXzContents(archivePath)
+	defer archiveReader.Close()
+
+	var checksum string
+	var binaryData []byte
+	var foundBinary, foundChecksum bool
+
+	for {
+		name, reader, err := archiveReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", nil, WrapError("read archive", err)
+		}
+
+		u.logger.Debug("Scanning archive file", zap.String("filename", name))
+
+		if strings.HasSuffix(name, "checksum.txt") {
+			content, err := io.ReadAll(reader)
+			if err != nil {
+				return "", nil, WrapError("read checksum file", err)
+			}
+			checksum = readChecksumFromContent(string(content))
+			foundChecksum = true
+			u.logger.Debug("Found checksum file",
+				zap.String("filename", name),
+				zap.String("extracted checksum", checksum))
+			continue
+		}
+
+		if u.isTargetBinary(name) {
+			binaryData, err = io.ReadAll(reader)
+			if err != nil {
+				return "", nil, WrapError("read binary file", err)
+			}
+			foundBinary = true
+			u.logger.Debug("Found binary file",
+				zap.String("filename", name),
+				zap.Int("size", len(binaryData)))
+		}
+
+		if foundBinary && foundChecksum {
+			break
+		}
+	}
+
+	if !foundBinary {
+		return "", nil, ErrNoExecutableFound
+	}
+	if !foundChecksum {
+		return "", nil, fmt.Errorf("checksum file not found")
+	}
+
+	// Verify checksum
+	if err := u.verifyChecksum(binaryData, checksum); err != nil {
+		return "", nil, err
+	}
+
+	return checksum, binaryData, nil
 }
 
 // readChecksumFromContent extracts checksum from checksum file content
@@ -350,170 +557,40 @@ func readChecksumFromContent(content string) string {
 	return content
 }
 
-// readZipContents reads contents from ZIP file
-func (u *Updater) readZipContents(archivePath string) (string, []byte, error) {
-	reader, err := zip.OpenReader(archivePath)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to open ZIP file: %w", err)
-	}
-	defer reader.Close()
-
-	var checksum string
-	var binaryData []byte
-	var foundBinary, foundChecksum bool
-	var binaryName string
-
-	// First, look for checksum file
-	for _, file := range reader.File {
-		u.logger.Debug("Scanning archive file", zap.String("filename", file.Name))
-
-		if strings.HasSuffix(file.Name, "checksum.txt") {
-			rc, err := file.Open()
-			if err != nil {
-				return "", nil, fmt.Errorf("failed to open checksum file: %w", err)
-			}
-			content, err := io.ReadAll(rc)
-			rc.Close()
-			if err != nil {
-				return "", nil, fmt.Errorf("failed to read checksum file: %w", err)
-			}
-			checksum = readChecksumFromContent(string(content))
-			foundChecksum = true
-			u.logger.Debug("Found checksum file",
-				zap.String("filename", file.Name),
-				zap.String("raw content", string(content)),
-				zap.String("extracted checksum", checksum))
-			continue
-		}
-
-		if u.isTargetBinary(file.Name) {
-			binaryName = file.Name
-			rc, err := file.Open()
-			if err != nil {
-				return "", nil, fmt.Errorf("failed to open binary file: %w", err)
-			}
-			binaryData, err = io.ReadAll(rc)
-			rc.Close()
-			if err != nil {
-				return "", nil, fmt.Errorf("failed to read binary file: %w", err)
-			}
-			foundBinary = true
-			u.logger.Debug("Found binary file",
-				zap.String("filename", file.Name),
-				zap.Int("size", len(binaryData)))
-		}
-
-		if foundBinary && foundChecksum {
-			break
-		}
-	}
-
-	if !foundBinary {
-		return "", nil, ErrNoExecutableFound
-	}
-	if !foundChecksum {
-		return "", nil, fmt.Errorf("checksum file not found")
-	}
-
-	// Verify read data
-	actualChecksum, err := calculateChecksum(binaryData)
-	if err != nil {
-		return "", nil, err
-	}
-	logChecksumInfo(u.logger, binaryName, checksum, actualChecksum)
-
-	return checksum, binaryData, nil
-}
-
-// readTarXzContents reads contents from TAR.XZ file
-func (u *Updater) readTarXzContents(archivePath string) (string, []byte, error) {
-	f, err := os.Open(archivePath)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer f.Close()
-
-	xzReader, err := xz.NewReader(f)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to create XZ decompressor: %w", err)
-	}
-
-	tarReader := tar.NewReader(xzReader)
-	var checksum string
-	var binaryData []byte
-	var foundBinary, foundChecksum bool
-	var binaryName string
-
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return "", nil, fmt.Errorf("failed to read TAR file: %w", err)
-		}
-
-		u.logger.Debug("Scanning archive file", zap.String("filename", header.Name))
-
-		if strings.HasSuffix(header.Name, "checksum.txt") {
-			content, err := io.ReadAll(tarReader)
-			if err != nil {
-				return "", nil, fmt.Errorf("failed to read checksum file: %w", err)
-			}
-			checksum = readChecksumFromContent(string(content))
-			foundChecksum = true
-			u.logger.Debug("Found checksum file",
-				zap.String("filename", header.Name),
-				zap.String("raw content", string(content)),
-				zap.String("extracted checksum", checksum))
-			continue
-		}
-
-		if u.isTargetBinary(header.Name) {
-			binaryName = header.Name
-			binaryData, err = io.ReadAll(tarReader)
-			if err != nil {
-				return "", nil, fmt.Errorf("failed to read binary file: %w", err)
-			}
-			foundBinary = true
-			u.logger.Debug("Found binary file",
-				zap.String("filename", header.Name),
-				zap.Int("size", len(binaryData)))
-		}
-
-		if foundBinary && foundChecksum {
-			break
-		}
-	}
-
-	if !foundBinary {
-		return "", nil, ErrNoExecutableFound
-	}
-	if !foundChecksum {
-		return "", nil, fmt.Errorf("checksum file not found")
-	}
-
-	// Verify read data
-	actualChecksum, err := calculateChecksum(binaryData)
-	if err != nil {
-		return "", nil, err
-	}
-	logChecksumInfo(u.logger, binaryName, checksum, actualChecksum)
-
-	return checksum, binaryData, nil
-}
-
 // verifyChecksum verifies binary file checksum
 func (u *Updater) verifyChecksum(data []byte, expectedChecksum string) error {
 	actualChecksum, err := calculateChecksum(data)
 	if err != nil {
-		return err
+		return WrapError("calculate checksum", err)
 	}
 
 	logChecksumInfo(u.logger, u.BinaryName, expectedChecksum, actualChecksum)
 
 	if actualChecksum != expectedChecksum {
-		return fmt.Errorf("%w: expected checksum=%s, actual checksum=%s", ErrChecksumMismatch, expectedChecksum, actualChecksum)
+		return WrapError("checksum verification", fmt.Errorf("%w: expected=%s, actual=%s", errChecksumMismatch, expectedChecksum, actualChecksum))
+	}
+
+	return nil
+}
+
+// verifyAndSaveBinary verifies the checksum and saves the binary file
+func (u *Updater) verifyAndSaveBinary(destPath string, binaryData []byte, checksum string) error {
+	// Verify binary file checksum
+	if err := u.verifyChecksum(binaryData, checksum); err != nil {
+		return err
+	}
+
+	// Save binary file
+	if err := os.WriteFile(destPath, binaryData, executablePerm); err != nil {
+		u.logger.Error("Failed to save binary file", zap.Error(err))
+		return WrapError("save binary file", err)
+	}
+
+	// Save version and checksum information
+	if err := u.writeVersionInfo(checksum); err != nil {
+		// If writing version information fails, delete the installed binary file
+		os.Remove(destPath)
+		return WrapError("save version information", err)
 	}
 
 	return nil
@@ -562,7 +639,24 @@ func (u *Updater) isTargetBinary(filename string) bool {
 	return false
 }
 
-// fileExists checks if file exists
+// calculateChecksum calculates the SHA1 checksum of data
+func calculateChecksum(data []byte) (string, error) {
+	hash := sha1.New()
+	if _, err := hash.Write(data); err != nil {
+		return "", fmt.Errorf("failed to calculate checksum: %w", err)
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// logChecksumInfo logs the checksum information
+func logChecksumInfo(logger *zap.Logger, filename, expected, actual string) {
+	logger.Debug("Checksum information",
+		zap.String("filename", filename),
+		zap.String("expected checksum", expected),
+		zap.String("actual checksum", actual))
+}
+
+// fileExists checks if a file exists at the given path
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
@@ -573,18 +667,36 @@ func (u *Updater) GetBinaryPath() string {
 	return filepath.Join(u.InstallDir, "bin", u.BinaryName)
 }
 
-// Utility functions
-func calculateChecksum(data []byte) (string, error) {
-	hash := sha1.New()
-	if _, err := io.Copy(hash, bytes.NewReader(data)); err != nil {
-		return "", fmt.Errorf("failed to calculate checksum: %w", err)
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
+// ChecksumInfo represents a file checksum entry
+type ChecksumInfo struct {
+	Filename string
+	Hash     string
 }
 
-func logChecksumInfo(logger *zap.Logger, filename, expected, actual string) {
-	logger.Debug("Checksum information",
-		zap.String("filename", filename),
-		zap.String("expected checksum", expected),
-		zap.String("actual checksum", actual))
+// ChecksumList represents parsed checksums file
+type ChecksumList struct {
+	Entries map[string]string // filename -> hash
+}
+
+// ParseChecksumContent parses checksums.txt content
+func ParseChecksumContent(content string) (*ChecksumList, error) {
+	list := &ChecksumList{
+		Entries: make(map[string]string),
+	}
+
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+	for _, line := range lines {
+		parts := strings.Fields(line)
+		if len(parts) != 2 {
+			continue
+		}
+		hash := parts[0]
+		filename := parts[1]
+
+		// Remove file extension for comparison
+		baseFilename := strings.TrimSuffix(filename, filepath.Ext(filename))
+		list.Entries[baseFilename] = hash
+	}
+
+	return list, nil
 }
