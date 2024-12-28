@@ -43,7 +43,7 @@ func NewTable(headers []string) *Table {
 			colors = text.Colors{text.FgHiYellow}
 		case "节点类型": // Node Type
 			colors = text.Colors{text.FgHiCyan}
-		case "ID":
+		case "节点ID":
 			colors = text.Colors{text.FgHiMagenta}
 		default:
 			colors = text.Colors{text.FgWhite}

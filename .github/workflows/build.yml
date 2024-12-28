@@ -87,7 +87,7 @@ jobs:
           go build -v -trimpath \
             -ldflags="-s -w -X 'aqua-speed-tools/internal/config.Version=${{ steps.get_version.outputs.VERSION }}'" \
             -o "${{ runner.temp }}/build/out/${OUTPUT_NAME}" \
-            ./cmd/speedtest
+            ./cmd/tools
 
       - name: Compress Binary with UPX
         working-directory: ${{ runner.temp }}/build/out

@@ -279,7 +279,7 @@ func (u *Updater) writeVersionInfo(latestVersion, checksum string) error {
 
 // readArchiveContents reads checksum and binary data from the archive.
 func (u *Updater) readArchiveContents(archivePath string) (string, []byte, error) {
-	archiveReader, err := NewArchiveReader(archivePath)
+	archiveReader, err := NewArchiveReader(archivePath, u.logger)
 	if err != nil {
 		return "", nil, WrapError("create archive reader", err)
 	}

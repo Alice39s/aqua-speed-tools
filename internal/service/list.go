@@ -15,7 +15,7 @@ func (s *SpeedTest) ListNodes() error {
 		return fmt.Errorf("node list is empty")
 	}
 
-	headers := []string{"Name", "ISP", "Node Type", "Required Traffic", "ID"}
+	headers := []string{"名称", "运营商", "节点类型", "测速所需流量", "节点ID"}
 	table := utils.NewTable(headers)
 
 	table.EnableAutoMerge()
