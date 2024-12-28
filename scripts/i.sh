@@ -1,13 +1,16 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 # 设置严格模式
-set -euo pipefail
-IFS=$'\n\t'
+set -eu
 
-# 常量定义
-readonly REPO="alice39s/aqua-speed-tools"
-readonly CONFIG_URL="https://raw.githubusercontent.com/$REPO/main/configs/base.json"
-readonly CONFIG_DIR="configs"
+RAW_BASE_URL="${AQUA_SPEED_RAW_URL:-https://raw.githubusercontent.com/}" 
+GITHUB_BASE_URL="${AQUA_SPEED_GITHUB_BASE_URL:-https://github.com/}"
+GITHUB_API_BASE_URL="${AQUA_SPEED_GITHUB_API_BASE_URL:-https://api.github.com/}"
+REPO="alice39s/aqua-speed-tools"
+
+CONFIG_JSON_URL="$RAW_BASE_URL/$REPO/main/configs/base.json"
+CONFIG_URL="${AQUA_SPEED_CONFIG_URL:-$CONFIG_JSON_URL}"
+CONFIG_DIR="configs"
 TEMP_DIR=""
 
 # 检查是否支持彩色输出
@@ -48,25 +51,18 @@ log_error() {
 
 # 清理函数
 cleanup() {
-    local exit_code=$?
+    exit_code=$?
     log_warning "清理临时文件中，请勿强制关闭..."
     if [ -d "${TEMP_DIR}" ]; then
         rm -rf "${TEMP_DIR}"
     fi
+    log_info "清理完成"
     exit ${exit_code}
-}
-
-# 错误处理
-error_handler() {
-    local line_no=$1
-    local error_code=$2
-    log_error "脚本执行错误 (行号: ${line_no}, 错误码: ${error_code})"
-    cleanup
 }
 
 # 检查命令是否存在
 check_command() {
-    local cmd=$1
+    cmd=$1
     if ! command -v "${cmd}" >/dev/null 2>&1; then
         log_error "未找到命令: ${cmd}"
         return 1
@@ -128,12 +124,11 @@ detect_system() {
 
 # 获取最新版本
 get_latest_version() {
-    local api_result
-    local attempt=1
-    local max_attempts=3
+    attempt=1
+    max_attempts=3
 
     while [ ${attempt} -le ${max_attempts} ]; do
-        if api_result=$(curl -sSL --connect-timeout 10 --max-time 15 "https://api.github.com/repos/${REPO}/releases/latest"); then
+        if api_result=$(curl -sSL --connect-timeout 10 --max-time 15 "${GITHUB_API_BASE_URL}/repos/${REPO}/releases/latest"); then
             VERSION=$(echo "${api_result}" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
             if [ -n "${VERSION}" ]; then
                 return 0
@@ -150,10 +145,10 @@ get_latest_version() {
 
 # 下载文件
 download_file() {
-    local url=$1
-    local output=$2
-    local attempt=1
-    local max_attempts=3
+    url=$1
+    output=$2
+    attempt=1
+    max_attempts=3
 
     while [ ${attempt} -le ${max_attempts} ]; do
         if curl -sSL --connect-timeout 10 --max-time 30 -o "${output}" "${url}"; then
@@ -169,7 +164,7 @@ download_file() {
 
 # 下载二进制文件
 download_binary() {
-    local binary_url="https://github.com/${REPO}/releases/latest/download/aqua-speed-tools-${OS}-${ARCH}"
+    binary_url="${GITHUB_BASE_URL}/${REPO}/releases/latest/download/aqua-speed-tools-${OS}-${ARCH}"
 
     log_info "下载主程序中..."
     if ! download_file "${binary_url}" "aqua-speed-tools"; then
@@ -216,18 +211,24 @@ show_menu() {
     printf "3) ${BOLD}退出${NC}\n"
 }
 
+# 列出节点并获取输入
+list_and_get_input() {
+    ./aqua-speed-tools list
+    printf "\n${BLUE}请输入要测试的节点ID:${NC}\n"
+    read -r node_id
+    ./aqua-speed-tools test "${node_id}"
+}
+
 # 处理用户输入
 handle_input() {
-    local choice
     read -r choice
     case ${choice} in
     1)
         log_info "列出所有节点..."
-        ./aqua-speed-tools list
+        list_and_get_input
         ;;
     2)
         printf "\n${BLUE}请输入节点ID:${NC}\n"
-        local node_id
         read -r node_id
         ./aqua-speed-tools test "${node_id}"
         ;;
@@ -244,13 +245,10 @@ handle_input() {
 
 # 主函数
 main() {
-    # 设置错误处理
-    trap 'error_handler ${LINENO} $?' ERR
-    trap cleanup EXIT INT TERM
+    trap cleanup INT TERM
 
     # 检查必要命令
-    local required_commands="curl grep sed"
-    for cmd in ${required_commands}; do
+    for cmd in curl grep sed; do
         check_command "${cmd}" || exit 1
     done
 
