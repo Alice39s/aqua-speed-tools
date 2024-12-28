@@ -112,7 +112,7 @@ func (z *ZipArchiveReader) Next() (string, io.Reader, error) {
 	return file.Name, NewReaderWithProgress(reader, int64(file.UncompressedSize64),
 		func(current, total int64) {
 			progressBar.Set64(current)
-			z.logger.Info("Extraction progress",
+			z.logger.Debug("Extraction progress",
 				zap.String("file", file.Name),
 				zap.Int64("current", current),
 				zap.Int64("total", total),
@@ -164,7 +164,7 @@ func NewTarXzArchiveReader(path string, logger *zap.Logger) (*TarXzArchiveReader
 
 	progressReader := NewReaderWithProgress(xzReader, fi.Size(),
 		func(current, total int64) {
-			logger.Info("Decompression progress",
+			logger.Debug("Decompression progress",
 				zap.Int64("current", current),
 				zap.Int64("total", total),
 				zap.Float64("percentage", float64(current)/float64(total)*100))

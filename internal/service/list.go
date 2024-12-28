@@ -19,7 +19,7 @@ func (s *SpeedTest) ListNodes() error {
 	table := utils.NewTable(headers)
 
 	table.EnableAutoMerge()
-	table.SortBy([]string{"Node Type", "ISP"})
+	table.SortBy([]string{"节点类型", "运营商"})
 
 	for id, node := range s.nodes {
 		size := humanize.Bytes(uint64(node.Size.Value) * 1000 * 1000 * 4)
