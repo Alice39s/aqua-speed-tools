@@ -38,3 +38,11 @@ func (s *SpeedTest) Init() error {
 	// Initialize nodes
 	return s.initNodes()
 }
+
+func (s *SpeedTest) GetNodes() []models.Node {
+	nodes := make([]models.Node, 0, len(s.nodes))
+	for _, node := range s.nodes {
+		nodes = append(nodes, node)
+	}
+	return nodes
+}

@@ -41,10 +41,10 @@ func (s *SpeedTest) ListNodes() error {
 }
 
 // getAvailableIDs gets all available node IDs
-func getAvailableIDs(nodes models.NodeList) []string {
+func getAvailableIDs(nodes []models.Node) []string {
 	ids := make([]string, 0, len(nodes))
-	for id := range nodes {
-		ids = append(ids, id)
+	for _, node := range nodes {
+		ids = append(ids, node.Id)
 	}
 	return ids
 }
