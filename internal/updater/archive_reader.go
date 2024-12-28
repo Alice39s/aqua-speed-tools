@@ -195,7 +195,7 @@ func (t *TarXzArchiveReader) Next() (string, io.Reader, error) {
 		return header.Name, NewReaderWithProgress(t.tarReader, header.Size,
 			func(current, total int64) {
 				progressBar.Set64(current)
-				t.logger.Info("File extraction progress",
+				t.logger.Debug("File extraction progress",
 					zap.String("file", header.Name),
 					zap.Int64("current", current),
 					zap.Int64("total", total),

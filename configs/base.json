@@ -3,7 +3,7 @@
         "prefix": "aqua-speed"
     },
     "script": {
-        "version": "2.0.4",
+        "version": "2.0.5",
         "prefix": "aqua-speed-tools"
     },
     "githubBaseUrl": "https://github.com",
