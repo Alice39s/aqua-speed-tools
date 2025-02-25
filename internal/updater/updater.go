@@ -50,7 +50,7 @@ func New(currentVersion string) (*Updater, error) {
 		CompressedName: compressedName,
 		logger:         logger,
 		client:         &http.Client{Timeout: time.Duration(config.ConfigReader.DownloadTimeout) * time.Second},
-		githubClient:   NewDefaultGitHubClient(&http.Client{Timeout: time.Duration(config.ConfigReader.DownloadTimeout) * time.Second}, logger),
+		githubClient:   NewDefaultGitHubClient(&http.Client{Timeout: time.Duration(config.ConfigReader.DownloadTimeout) * time.Second}, logger, currentVersion),
 	}, nil
 }
 

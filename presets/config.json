@@ -263,7 +263,7 @@
             "en": "Alibaba Cloud"
         },
         "url": "https://fastcdn.mihoyo.com/content-v2/hkrpg/125551/bf4fa83ba349a187fc26ad838b969a08_3726243956231692108.png",
-        "threads": 32,
+        "threads": 16,
         "type": "SingleFile",
         "geoInfo": {
             "countryCode": "CN",
@@ -284,7 +284,7 @@
             "en": "Alibaba Cloud"
         },
         "url": "https://webstatic.mihoyo.com/upload/static-resource/2022/04/19/aeefeb96a2a294cf1d7ab7324fd9a492_9102035117345458586.mp3",
-        "threads": 32,
+        "threads": 16,
         "type": "SingleFile",
         "geoInfo": {
             "countryCode": "CN",
@@ -396,27 +396,6 @@
             "region": null,
             "city": null,
             "type": "OSS"
-        }
-    },
-    "yuanmeng": {
-        "id": "yuanmeng",
-        "name": {
-            "zh": "元梦之星",
-            "en": "YuanMeng"
-        },
-        "size": 60,
-        "isp": {
-            "zh": "腾讯云",
-            "en": "Tencent Cloud CDN"
-        },
-        "url": "https://af34070fd060cf5bcd8a0299feb83e96.v.smtcdns.com/ymzx.lv.game.qq.com/dis_kt_051e943d711166e453474838a5ce5254_1702579567/0b53guaaoaaa2yaex4d37rs6onoda42qabya.f0.mp4?mkey=&f=&sche_type=&cip=&proto=",
-        "threads": 8,
-        "type": "SingleFile",
-        "geoInfo": {
-            "countryCode": "CN",
-            "region": null,
-            "city": null,
-            "type": "CDN"
         }
     },
     "weixin": {

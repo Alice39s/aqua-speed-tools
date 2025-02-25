@@ -2,18 +2,6 @@
 # 设置严格模式
 set -eu
 
-# 默认变量
-RAW_BASE_URL="${AQUA_SPEED_RAW_URL:-https://raw.githubusercontent.com}"
-GITHUB_BASE_URL="${AQUA_SPEED_GITHUB_BASE_URL:-https://github.com}"
-GITHUB_API_BASE_URL="${AQUA_SPEED_GITHUB_API_BASE_URL:-https://api.github.com}"
-REPO="alice39s/aqua-speed-tools"
-
-CONFIG_JSON_URL="$RAW_BASE_URL/$REPO/main/configs/base.json"
-CONFIG_URL="${AQUA_SPEED_CONFIG_URL:-$CONFIG_JSON_URL}"
-CONFIG_DIR="configs"
-TEMP_DIR=""
-EXIT_CODE=0
-
 # 检查是否支持彩色输出
 if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
     RED=$(tput setaf 1)
@@ -21,6 +9,7 @@ if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
     BLUE=$(tput setaf 4)
     YELLOW=$(tput setaf 3)
     CYAN=$(tput setaf 6)
+    GRAY=$(tput setaf 7)
     BOLD=$(tput bold)
     NC=$(tput sgr0)
 else
@@ -29,11 +18,17 @@ else
     BLUE=""
     YELLOW=""
     CYAN=""
+    GRAY=""
     BOLD=""
     NC=""
 fi
 
-# 日志函数
+log_debug() {
+    if [ "${DEBUG_MODE}" -eq 1 ]; then
+        printf "%s[DEBUG]%s %s\n" "$GRAY" "$NC" "$1" >&2
+    fi
+}
+
 log_info() {
     printf "%s[INFO]%s %s\n" "$BLUE" "$NC" "$1" >&2
 }
@@ -51,10 +46,75 @@ log_error() {
     EXIT_CODE=1
 }
 
+handle_error() {
+    _exit_code=$?
+    log_error "脚本发生错误，错误码: ${_exit_code}"
+    exit "${_exit_code}"
+}
+
+VERSION="1.0.0"
+REPO="alice39s/aqua-speed-tools"
+USER_AGENT="aqua-speed-tools-script/${VERSION}"
+DEBUG_MODE=0
+
+show_help() {
+    cat <<EOF
+Usage: $0 [options]
+
+Options:
+    -h, --help              显示帮助信息
+    -s, --smart-url URL     设置 SMART_BASE_URL
+    -d, --debug             开启 debug 模式
+EOF
+}
+
+SMART_BASE_URL=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+    -h | --help)
+        show_help
+        exit 0
+        ;;
+    -s | --smart-url)
+        if [ -n "$2" ]; then
+            SMART_BASE_URL="$2"
+            shift 2
+        else
+            log_error "Error: --smart-url 需要一个URL参数"
+            exit 1
+        fi
+        ;;
+    -d | --debug)
+        DEBUG_MODE=1
+        shift
+        ;;
+    *)
+        log_error "未知参数: $1"
+        show_help
+        exit 1
+        ;;
+    esac
+done
+
+RAW_BASE_URL=${SMART_BASE_URL:+"$SMART_BASE_URL/raw"}
+RAW_BASE_URL=${RAW_BASE_URL:-"https://raw.githubusercontent.com"}
+
+GITHUB_BASE_URL=${SMART_BASE_URL:+"$SMART_BASE_URL/base"}
+GITHUB_BASE_URL=${GITHUB_BASE_URL:-"https://github.com"}
+
+GITHUB_API_BASE_URL=${SMART_BASE_URL:+"$SMART_BASE_URL/api"}
+GITHUB_API_BASE_URL=${GITHUB_API_BASE_URL:-"https://api.github.com"}
+
+CONFIG_JSON_URL="$RAW_BASE_URL/$REPO/main/configs/base.json"
+CONFIG_URL="${AQUA_SPEED_CONFIG_URL:-$CONFIG_JSON_URL}"
+CONFIG_DIR="configs"
+TEMP_DIR=""
+EXIT_CODE=0
+
 # 清理函数
 cleanup() {
-    local exit_status=$?
-    [ "${exit_status}" -ne 0 ] && EXIT_CODE=${exit_status}
+    _exit_status=$?
+    [ "${_exit_status}" -ne 0 ] && EXIT_CODE=${_exit_status}
 
     # BusyBox sh 不支持 trap ''，使用另一个 trap 清除之前的 traps
     trap "" INT TERM EXIT
@@ -71,92 +131,104 @@ cleanup() {
     exit "${EXIT_CODE}"
 }
 
-# 错误处理函数
-handle_error() {
-    local exit_code=$?
-    log_error "脚本发生错误，错误码: ${exit_code}"
-    exit "${exit_code}"
-}
-
 # 检查命令是否存在
 check_command() {
-    local cmd="$1"
-    if ! command -v "${cmd}" >/dev/null 2>&1; then
-        log_error "未找到命令: ${cmd}"
+    _cmd=$1
+    if ! command -v "${_cmd}" >/dev/null 2>&1; then
+        log_error "未找到命令: ${_cmd}"
         return 1
     fi
     return 0
 }
 
-# 确认是否安装命令
-confirm_install_command() {
-    cmd="$1"
-    # 使用 | 作为分隔符，确保 install_cmd 中的空格不会导致拆分
-    package_managers="apt:apt install -y|yum:yum install -y|brew:brew install|pacman:pacman -S --noconfirm|apk:apk add --no-cache"
+# 检查文件权限和状态
+check_file_access() {
+    _path=$1
+    _type=$2             # file 或 directory
+    _check_write=${3:-0} # 是否检查写入权限，默认不检查
 
-    # 检查命令是否已存在
-    if ! command -v "${cmd}" >/dev/null 2>&1; then
-        # 检查是否有root权限
-        if [ "$(id -u)" -ne 0 ]; then
-            log_error "安装命令需要root权限，请使用sudo运行此脚本"
+    if [ "${_type}" = "file" ]; then
+        if [ ! -f "${_path}" ]; then
+            log_error "文件不存在: ${_path}"
             return 1
         fi
-
-        # 询问用户是否安装
-        log_warning "未找到命令: ${cmd}, 是否使用包管理器安装?"
-        printf "请输入 y 或 n: "
-        read -r confirm
-        case "${confirm}" in
-        [Yy]*) ;;
-        *) return 1 ;;
-        esac
-
-        log_info "${cmd} 安装中..."
-
-        found_manager=0
-        install_success=0
-
-        OLD_IFS="$IFS"
-        IFS="|"
-        for pair in ${package_managers}; do
-            IFS=":"
-            set -- ${pair}
-            manager=$1
-            install_cmd=$2
-            IFS="$OLD_IFS"
-
-            # 检查 manager 和 install_cmd 是否都已设置
-            if [ -n "${manager}" ] && [ -n "${install_cmd}" ]; then
-                if command -v "${manager}" >/dev/null 2>&1; then
-                    found_manager=1
-                    if eval "${install_cmd} ${cmd}" >/dev/null 2>&1; then
-                        if command -v "${cmd}" >/dev/null 2>&1; then
-                            log_success "${cmd} 安装成功"
-                            install_success=1
-                            break
-                        else
-                            log_warning "${cmd} 安装命令执行成功，但可能安装失败，请尝试手动安装 ${cmd}"
-                        fi
-                    else
-                        log_error "使用 ${manager} 安装 ${cmd} 失败"
-                    fi
-                fi
-            else
-                log_warning "无效的包管理器配置: ${pair}"
+        if [ ! -r "${_path}" ]; then
+            log_error "文件无读取权限: ${_path}"
+            return 1
+        fi
+    elif [ "${_type}" = "directory" ]; then
+        if [ ! -d "${_path}" ]; then
+            if ! mkdir -p "${_path}"; then
+                log_error "创建目录失败: ${_path}"
+                return 1
             fi
-        done
-
-        IFS="$OLD_IFS"
-
-        if [ "${found_manager}" -eq 0 ]; then
-            log_error "无法安装命令: ${cmd}，未找到支持的包管理器"
-            return 1
         fi
+    fi
 
-        if [ "${install_success}" -eq 0 ]; then
-            log_error "无法安装命令: ${cmd}，所有包管理器安装尝试均失败"
-            return 1
+    if [ "${_check_write}" -eq 1 ] && [ ! -w "${_path}" ]; then
+        log_error "${_type}无写入权限: ${_path}"
+        return 1
+    fi
+
+    return 0
+}
+
+# 检查命令是否存在并尝试安装
+check_and_install_command() {
+    _cmd=$1
+    _auto_install=${2:-0} # 是否自动安装，默认不自动安装
+
+    if command -v "${_cmd}" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if [ "${_auto_install}" -eq 0 ]; then
+        log_error "未找到命令: ${_cmd}"
+        return 1
+    fi
+
+    # 检查是否有root权限
+    if [ "$(id -u)" -ne 0 ]; then
+        log_error "安装命令需要root权限，请使用sudo运行此脚本"
+        return 1
+    fi
+
+    log_warning "未找到命令: ${_cmd}, 尝试安装..."
+    _package_managers="apt:apt install -y|yum:yum install -y|brew:brew install|pacman:pacman -S --noconfirm|apk:apk add --no-cache"
+    _found_manager=0
+    _install_success=0
+
+    _OLD_IFS=$IFS
+    IFS="|"
+    for _pair in ${_package_managers}; do
+        IFS=":"
+        set -- ${_pair}
+        _manager=$1
+        _install_cmd=$2
+        IFS=$_OLD_IFS
+
+        if command -v "${_manager}" >/dev/null 2>&1; then
+            _found_manager=1
+            if eval "${_install_cmd} ${_cmd}" >/dev/null 2>&1; then
+                if command -v "${_cmd}" >/dev/null 2>&1; then
+                    log_success "${_cmd} 安装成功"
+                    _install_success=1
+                    break
+                fi
+            fi
         fi
+    done
+
+    IFS=$_OLD_IFS
+
+    if [ "${_found_manager}" -eq 0 ]; then
+        log_error "未找到支持的包管理器"
+        return 1
+    fi
+
+    if [ "${_install_success}" -eq 0 ]; then
+        log_error "安装失败，请尝试手动安装 ${_cmd}"
+        return 1
     fi
 
     return 0
@@ -164,20 +236,10 @@ confirm_install_command() {
 
 # 检查并创建临时目录
 setup_temp_dir() {
-    if ! command -v mktemp >/dev/null 2>&1; then
-        log_error "未找到mktemp命令"
-        return 1
-    fi
+    check_and_install_command "mktemp" || return 1
 
     TEMP_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'aquaspeed')
-    if [ ! -d "${TEMP_DIR}" ]; then
-        log_error "创建临时目录失败"
-        return 1
-    fi
-
-    # 检查目录权限
-    if [ ! -w "${TEMP_DIR}" ]; then
-        log_error "临时目录无写入权限: ${TEMP_DIR}"
+    if ! check_file_access "${TEMP_DIR}" "directory" 1; then
         return 1
     fi
 
@@ -191,18 +253,7 @@ setup_temp_dir() {
 
 # 创建配置目录
 setup_config_dir() {
-    if [ -d "${CONFIG_DIR}" ]; then
-        if [ ! -w "${CONFIG_DIR}" ]; then
-            log_error "配置目录无写入权限: ${CONFIG_DIR}"
-            return 1
-        fi
-    else
-        if ! mkdir -p "${CONFIG_DIR}"; then
-            log_error "创建配置目录失败: ${CONFIG_DIR}"
-            return 1
-        fi
-    fi
-    return 0
+    check_file_access "${CONFIG_DIR}" "directory" 1
 }
 
 # 检测系统信息
@@ -229,43 +280,98 @@ detect_system() {
     esac
 
     log_info "系统: ${OS}, 架构: ${ARCH}"
+
+    if [ -n "${SMART_BASE_URL}" ]; then
+        printf "%s正在使用镜像:%s %s\n" "$CYAN" "$NC" "${SMART_BASE_URL}"
+    fi
+
     return 0
+}
+
+# 通用的 curl 请求函数
+make_curl_request() {
+    _url=$1
+    _output=$2
+    _attempt=1
+    _max_attempts=3
+    _curl_timeout=10
+    _curl_max_time=30
+    _is_api_call=0
+
+    # 如果第三个参数存在且为1，则为API调用
+    if [ $# -ge 3 ] && [ "$3" -eq 1 ]; then
+        _is_api_call=1
+        _curl_max_time=15
+    fi
+
+    log_debug "正在请求 ${_url}"
+
+    while [ "${_attempt}" -le "${_max_attempts}" ]; do
+        if [ "${_is_api_call}" -eq 1 ]; then
+            log_debug "正在请求 API ${_url}"
+            _response=$(curl -sL --retry 2 --retry-delay 1 \
+                --connect-timeout "${_curl_timeout}" \
+                --max-time "${_curl_max_time}" \
+                -H "User-Agent: ${USER_AGENT}" \
+                "${_url}" 2>/dev/null)
+            _curl_exit_code=$?
+        else
+            if [ -n "${_output}" ]; then
+                log_debug "正在下载 ${_url} 到 ${_output}"
+                curl -sSL --connect-timeout "${_curl_timeout}" \
+                    --max-time "${_curl_max_time}" \
+                    -H "User-Agent: ${USER_AGENT}" \
+                    -o "${_output}" "${_url}"
+                _curl_exit_code=$?
+            else
+                _response=$(curl -sSL --connect-timeout "${_curl_timeout}" \
+                    --max-time "${_curl_max_time}" \
+                    -H "User-Agent: ${USER_AGENT}" \
+                    "${_url}")
+                _curl_exit_code=$?
+            fi
+        fi
+
+        if [ "${_curl_exit_code}" -eq 0 ]; then
+            if [ "${_is_api_call}" -eq 1 ] || [ -z "${_output}" ]; then
+                echo "${_response}"
+                return 0
+            elif [ -s "${_output}" ]; then
+                return 0
+            fi
+        fi
+
+        log_warning "请求失败，尝试第 ${_attempt}/${_max_attempts} 次"
+        _attempt=$((_attempt + 1))
+        [ "${_attempt}" -le "${_max_attempts}" ] && sleep 2
+    done
+
+    log_error "请求失败: ${_url}"
+    return 1
 }
 
 # 获取最新版本
 get_latest_version() {
-    attempt=1
-    max_attempts=3
-    VERSION=""
-    curl_timeout=10
-    curl_max_time=15
+    api_result=$(make_curl_request "${GITHUB_API_BASE_URL}/repos/${REPO}/releases/latest" "" 1) || return 1
 
-    while [ "${attempt}" -le "${max_attempts}" ]; do
-        api_result=$(curl -sSL --connect-timeout "${curl_timeout}" --max-time "${curl_max_time}" "${GITHUB_API_BASE_URL}/repos/${REPO}/releases/latest" 2>/dev/null) || {
-            log_warning "API请求失败，尝试第 ${attempt}/${max_attempts} 次"
-            attempt=$((attempt + 1))
-            [ "${attempt}" -le "${max_attempts}" ] && sleep 2
-            continue
-        }
+    if command -v jq >/dev/null 2>&1; then
+        VERSION=$(echo "${api_result}" | jq -r '.tag_name // empty')
+    fi
+    # 如果版本号为空，则使用 grep 解析
+    if [ -z "${VERSION}" ]; then
+        log_debug "jq 解析失败，使用 grep 解析版本信息"
+        VERSION=$(echo "${api_result}" | grep -o '"tag_name":[[:space:]]*"[^"]*"' | sed 's/"tag_name":[[:space:]]*"\([^"]*\)"/\1/')
+    fi
 
-        if command -v jq >/dev/null 2>&1; then
-            VERSION=$(echo "${api_result}" | jq -r '.tag_name // empty')
-        else
-            VERSION=$(echo "${api_result}" | grep -o '"tag_name":[[:space:]]*"[^"]*"' | sed 's/"tag_name":[[:space:]]*"\([^"]*\)"/\1/')
-        fi
+    if [ -n "${VERSION}" ]; then
+        log_success "最新版本: ${VERSION}"
+        echo "${VERSION}"
+        return 0
+    fi
 
-        if [ -n "${VERSION}" ]; then
-            log_success "最新版本: ${VERSION}"
-            echo "${VERSION}"
-            return 0
-        fi
+    log_debug "API 结果: ${api_result}"
 
-        log_warning "解析版本信息失败，尝试第 ${attempt}/${max_attempts} 次"
-        attempt=$((attempt + 1))
-        [ "${attempt}" -le "${max_attempts}" ] && sleep 2
-    done
-
-    log_error "获取版本信息失败"
+    log_error "解析版本信息失败"
     return 1
 }
 
@@ -273,49 +379,30 @@ get_latest_version() {
 download_file() {
     url="$1"
     output="$2"
-    attempt=1
-    max_attempts=3
-    curl_timeout=10
-    curl_max_time=30
 
-    while [ "${attempt}" -le "${max_attempts}" ]; do
-        if curl -sSL --connect-timeout "${curl_timeout}" --max-time "${curl_max_time}" -o "${output}" "${url}"; then
-            if [ -s "${output}" ]; then
-                return 0
-            else
-                log_warning "下载的文件为空，尝试第 ${attempt}/${max_attempts} 次"
-            fi
-        else
-            log_warning "下载失败，尝试第 ${attempt}/${max_attempts} 次"
-        fi
-        attempt=$((attempt + 1))
-        [ "${attempt}" -le "${max_attempts}" ] && sleep 2
-    done
-
-    log_error "下载失败: ${url}"
-    return 1
+    if ! make_curl_request "${url}" "${output}"; then
+        log_error "下载失败: ${url}"
+        return 1
+    fi
+    return 0
 }
 
 # 验证配置文件
 validate_config() {
-    if [ ! -f "${CONFIG_DIR}/base.json" ]; then
-        log_error "配置文件不存在: ${CONFIG_DIR}/base.json"
+    _config_file="${CONFIG_DIR}/base.json"
+
+    if ! check_file_access "${_config_file}" "file"; then
         return 1
     fi
 
-    if [ ! -r "${CONFIG_DIR}/base.json" ]; then
-        log_error "配置文件无读取权限"
-        return 1
-    fi
-
-    if command -v jq >/dev/null 2>&1; then
-        if ! jq empty "${CONFIG_DIR}/base.json" 2>/dev/null; then
+    if check_and_install_command "jq" 0; then
+        if ! jq empty "${_config_file}" 2>/dev/null; then
             log_error "配置文件格式无效"
             return 1
         fi
     else
         # 基本的 JSON 格式检查
-        if ! grep -q '^{.*}$' "${CONFIG_DIR}/base.json"; then
+        if ! grep -q '^{.*}$' "${_config_file}"; then
             log_error "配置文件格式无效"
             return 1
         fi
@@ -369,9 +456,11 @@ show_logo() {
 EOF
 
     printf "\n%s仓库:%s https://github.com/%s\n" "$CYAN" "$NC" "${REPO}"
+
     if [ -n "${VERSION}" ]; then
         printf "%s版本:%s %s\n" "$CYAN" "$NC" "${VERSION}"
     fi
+
     printf "%s作者:%s Alice39s\n\n" "$CYAN" "$NC"
 }
 
@@ -385,10 +474,27 @@ show_menu() {
 
 # 列出节点并获取输入
 list_and_get_input() {
-    ./aqua-speed-tools list
-    printf "\n%s请输入要测试的节点英文ID:%s\n" "$BLUE" "$NC"
+    ./aqua-speed-tools \
+        --github-base-url "${GITHUB_BASE_URL}" \
+        --github-raw-base-url "${RAW_BASE_URL}" \
+        --github-api-base-url "${GITHUB_API_BASE_URL}" \
+        list
+    printf "\n%s请输入要测试的节点 ID (支持数字序号或英文ID):%s\n" "$BLUE" "$NC"
     read -r node_id
-    ./aqua-speed-tools test "${node_id}"
+    if [ -z "${node_id}" ]; then
+        log_error "节点ID不能为空"
+        return 1
+    fi
+    # 允许数字和英文ID
+    if ! echo "${node_id}" | grep -qE "^[0-9]+$|^[a-z]+$"; then
+        log_error "无效的节点ID，请输入数字序号或英文ID"
+        return 1
+    fi
+    ./aqua-speed-tools \
+        --github-base-url "${GITHUB_BASE_URL}" \
+        --github-raw-base-url "${RAW_BASE_URL}" \
+        --github-api-base-url "${GITHUB_API_BASE_URL}" \
+        test "${node_id}"
 }
 
 # 处理用户输入
@@ -400,14 +506,18 @@ handle_input() {
         list_and_get_input
         ;;
     2)
-        printf "\n%s请输入节点ID:%s\n" "$BLUE" "$NC"
+        printf "\n%s请输入节点 ID (支持数字序号或英文ID):%s\n" "$BLUE" "$NC"
         read -r node_id
-        # 纯小写英文ID
-        if ! echo "${node_id}" | grep -qE "^[a-z]+$"; then
-            log_error "无效的节点ID，请输入英文ID"
+        # 允许数字和英文ID
+        if ! echo "${node_id}" | grep -qE "^[0-9]+$|^[a-z]+$"; then
+            log_error "无效的节点ID，请输入数字序号或英文ID"
             return 1
         fi
-        ./aqua-speed-tools test "${node_id}"
+        ./aqua-speed-tools \
+            --github-base-url "${GITHUB_BASE_URL}" \
+            --github-raw-base-url "${RAW_BASE_URL}" \
+            --github-api-base-url "${GITHUB_API_BASE_URL}" \
+            test "${node_id}"
         ;;
     3)
         cleanup
@@ -430,7 +540,7 @@ main() {
     for cmd in curl grep sed jq; do
         if ! check_command "${cmd}"; then
             # 尝试安装缺失的命令
-            confirm_install_command "${cmd}" || exit 1
+            check_and_install_command "${cmd}" || exit 1
         fi
     done
 

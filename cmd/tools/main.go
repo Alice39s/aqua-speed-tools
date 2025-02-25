@@ -19,6 +19,13 @@ const (
 	listCmdUsage = "list"
 )
 
+var (
+	// GitHub URLs
+	githubBaseURL    string
+	githubRawBaseURL string
+	githubAPIBaseURL string
+)
+
 func main() {
 	// Set log format
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
@@ -32,6 +39,18 @@ func main() {
 // execute executes the main program logic
 func execute() error {
 	cfg := config.ConfigReader
+
+	// Override GitHub URLs if provided
+	if githubBaseURL != "" {
+		cfg.GithubBaseUrl = githubBaseURL
+	}
+	if githubRawBaseURL != "" {
+		cfg.GithubRawBaseUrl = githubRawBaseURL
+	}
+	if githubAPIBaseURL != "" {
+		cfg.GithubApiBaseUrl = githubAPIBaseURL
+	}
+
 	logger := updater.InitLogger()
 	updater, err := updater.NewWithLocalVersion("0.0.0")
 	if err != nil {
@@ -60,11 +79,18 @@ func execute() error {
 
 // newRootCmd creates the root command
 func newRootCmd(version string) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "speedtest",
 		Short:   programDesc,
 		Version: version,
 	}
+
+	// Add GitHub URL flags
+	cmd.PersistentFlags().StringVar(&githubBaseURL, "github-base-url", "", "自定义 GitHub 基础 URL")
+	cmd.PersistentFlags().StringVar(&githubRawBaseURL, "github-raw-base-url", "", "自定义 GitHub Raw 内容 URL")
+	cmd.PersistentFlags().StringVar(&githubAPIBaseURL, "github-api-base-url", "", "自定义 GitHub API URL")
+
+	return cmd
 }
 
 // newListCmd creates the list command

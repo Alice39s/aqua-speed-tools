@@ -20,6 +20,9 @@ func NewTable(headers []string) *Table {
 	// Set default output to standard output
 	t.writer.SetOutputMirror(os.Stdout)
 
+	// Enable auto index
+	t.writer.SetAutoIndex(true)
+
 	// Set table headers
 	headerRow := make(table.Row, len(headers))
 	for i, h := range headers {
@@ -37,8 +40,6 @@ func NewTable(headers []string) *Table {
 		switch header {
 		case "名称": // Name
 			colors = text.Colors{text.FgHiBlue}
-		case "测速所需流量": // Required Traffic for Speed Test
-			colors = text.Colors{text.FgHiGreen}
 		case "运营商": // Service Provider
 			colors = text.Colors{text.FgHiYellow}
 		case "节点类型": // Node Type
@@ -56,12 +57,6 @@ func NewTable(headers []string) *Table {
 			Align:        text.AlignLeft,
 			VAlign:       text.VAlignMiddle,
 			WidthMax:     50,
-		}
-
-		// Right align for numeric columns
-		if header == "测速所需流量" { // Required Traffic for Speed Test
-			configs[i].Align = text.AlignRight
-			configs[i].AlignHeader = text.AlignCenter
 		}
 	}
 	t.writer.SetColumnConfigs(configs)

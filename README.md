@@ -10,13 +10,18 @@
 - :art: 美观的表格输出格式
 - :wrench: 多线程并发下载测试
 - :electric_plug: 支持 Patch 动态更新 (TODO)
+- :globe_with_meridians: 支持自定义镜像源
 
 ## :inbox_tray: 使用方式
 
 ### :book: 一键脚本
 
 ```bash
+# 使用默认源
 bash <(curl -fsSL https://raw.githubusercontent.com/alice39s/aqua-speed-tools/main/scripts/i.sh)
+
+# 使用自定义镜像源
+bash <(curl -fsSL https://raw.githubusercontent.com/alice39s/aqua-speed-tools/main/scripts/i.sh) -s "https://glb.000000039.xyz"
 ```
 
 ### :hammer_and_wrench: 从源码编译
@@ -32,10 +37,10 @@ cd aqua-speed-tools
 
 ```bash
 # (Linux / macOS)
-go build -o aqua-speed-tools cmd/speedtest/main.go
+go build -o aqua-speed-tools cmd/tools/main.go
 
 # (Windows)
-go build -o aqua-speed-tools.exe cmd/speedtest/main.go
+go build -o aqua-speed-tools.exe cmd/tools/main.go
 ```
 
 #### :running: 运行
@@ -150,15 +155,21 @@ go build -o aqua-speed-tools.exe cmd/speedtest/main.go
 ./aqua-speed-tools list
 
 # 测试指定节点速度
-./aqua-speed-tools test <节点英文ID>
+./aqua-speed-tools test <节点ID>
 
 # 测试所有节点 (不推荐)
 ./aqua-speed-tools test all
+
+# 使用自定义镜像源
+./aqua-speed-tools --github-base-url "https://mirror.example.com/base" \
+                  --github-raw-base-url "https://mirror.example.com/raw" \
+                  --github-api-base-url "https://mirror.example.com/api" \
+                  list
 ```
 
 ## :wrench: 技术栈
 
-- Go 1.22.10+
+- Go 1.24.0+
 - cobra (命令行框架)
 - go-pretty (表格输出)
 - zap (日志记录)

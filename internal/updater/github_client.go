@@ -26,15 +26,17 @@ type GitHubClient interface {
 
 // DefaultGitHubClient is the default implementation of GitHubClient.
 type DefaultGitHubClient struct {
-	client *http.Client
-	logger *zap.Logger
+	client  *http.Client
+	logger  *zap.Logger
+	version string
 }
 
 // NewDefaultGitHubClient creates a new DefaultGitHubClient instance.
-func NewDefaultGitHubClient(client *http.Client, logger *zap.Logger) *DefaultGitHubClient {
+func NewDefaultGitHubClient(client *http.Client, logger *zap.Logger, version string) *DefaultGitHubClient {
 	return &DefaultGitHubClient{
-		client: client,
-		logger: logger,
+		client:  client,
+		logger:  logger,
+		version: version,
 	}
 }
 
@@ -45,7 +47,7 @@ func (c *DefaultGitHubClient) GetLatestRelease(ctx context.Context, apiURL strin
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	userAgent := "Aqua-Speed-Updater"
+	userAgent := "Aqua-Speed-Updater/" + c.version
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
