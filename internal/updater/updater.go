@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"aqua-speed-tools/internal/utils"
+
 	"github.com/blang/semver/v4"
 	"github.com/schollz/progressbar/v3"
 	"go.uber.org/zap"
@@ -43,6 +45,22 @@ func New(currentVersion string) (*Updater, error) {
 	binaryName := FormatBinaryName("aqua-speed", runtime.GOOS, arch)
 	compressedName := FormatCompressedName("aqua-speed", runtime.GOOS, arch, currentVersion)
 
+	// 确保配置已加载，如果没有则使用默认值
+	if config.ConfigReader == nil {
+		config.ConfigReader = &config.Config{
+			GithubRawBaseUrl: "https://raw.githubusercontent.com",
+			GithubApiBaseUrl: "https://api.github.com",
+			GithubRepo:       "alice39s/aqua-speed-tools",
+			DownloadTimeout:  30,
+		}
+	}
+
+	urls := utils.NewGitHubURLs(
+		config.ConfigReader.GithubRawBaseUrl,
+		config.ConfigReader.GithubApiBaseUrl,
+		config.ConfigReader.GitHubRawMagicSet,
+	)
+
 	return &Updater{
 		Version:        parsedVersion,
 		InstallDir:     GetInstallDir("aqua-speed"),
@@ -50,7 +68,7 @@ func New(currentVersion string) (*Updater, error) {
 		CompressedName: compressedName,
 		logger:         logger,
 		client:         &http.Client{Timeout: time.Duration(config.ConfigReader.DownloadTimeout) * time.Second},
-		githubClient:   NewDefaultGitHubClient(&http.Client{Timeout: time.Duration(config.ConfigReader.DownloadTimeout) * time.Second}, logger, currentVersion),
+		githubClient:   NewDefaultGitHubClient(&http.Client{Timeout: time.Duration(config.ConfigReader.DownloadTimeout) * time.Second}, logger, currentVersion, urls),
 	}, nil
 }
 
@@ -78,9 +96,14 @@ func (u *Updater) GetLatestVersion() (semver.Version, string, string, error) {
 		return semver.Version{}, "", "", fmt.Errorf("github client is nil")
 	}
 
+	// 确保 GithubRepo 不为空
+	if config.ConfigReader.GithubRepo == "" {
+		config.ConfigReader.GithubRepo = "alice39s/aqua-speed-tools"
+	}
+
 	apiURL := fmt.Sprintf("%s/repos/%s/releases/latest",
-		config.ConfigReader.GithubApiBaseUrl,
-		config.ConfigReader.GithubRepo)
+		strings.TrimSuffix(config.ConfigReader.GithubApiBaseUrl, "/"),
+		strings.TrimPrefix(config.ConfigReader.GithubRepo, "/"))
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

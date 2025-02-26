@@ -474,27 +474,50 @@ show_menu() {
 
 # 列出节点并获取输入
 list_and_get_input() {
-    ./aqua-speed-tools \
+    # 检查二进制文件
+    if [ ! -f "./aqua-speed-tools" ] || [ ! -x "./aqua-speed-tools" ]; then
+        log_error "下载失败，请检查网络连接"
+        return 1
+    fi
+
+    # 列出所有节点
+    if ! ./aqua-speed-tools \
         --github-base-url "${GITHUB_BASE_URL}" \
         --github-raw-base-url "${RAW_BASE_URL}" \
         --github-api-base-url "${GITHUB_API_BASE_URL}" \
-        list
-    printf "\n%s请输入要测试的节点 ID (支持数字序号或英文ID):%s\n" "$BLUE" "$NC"
+        list; then
+        log_error "列出节点失败"
+        return 1
+    fi
+
+    # 获取用户输入
+    printf "\n%s请输入要测试的节点 ID (支持数字序号或英文ID):%s " "$BLUE" "$NC"
     read -r node_id
+
+    # 验证输入
     if [ -z "${node_id}" ]; then
         log_error "节点ID不能为空"
         return 1
     fi
-    # 允许数字和英文ID
-    if ! echo "${node_id}" | grep -qE "^[0-9]+$|^[a-z]+$"; then
-        log_error "无效的节点ID，请输入数字序号或英文ID"
+
+    # 允许数字、字母和组合ID
+    if ! echo "${node_id}" | grep -qE "^[0-9a-zA-Z_-]+$"; then
+        log_error "无效的节点ID，请输入有效的序号或ID"
         return 1
     fi
-    ./aqua-speed-tools \
+
+    # 执行测试
+    log_info "正在测试节点 ${node_id}..."
+    if ! ./aqua-speed-tools \
         --github-base-url "${GITHUB_BASE_URL}" \
         --github-raw-base-url "${RAW_BASE_URL}" \
         --github-api-base-url "${GITHUB_API_BASE_URL}" \
-        test "${node_id}"
+        test "${node_id}"; then
+        log_error "测试节点 ${node_id} 失败"
+        return 1
+    fi
+    
+    return 0
 }
 
 # 处理用户输入

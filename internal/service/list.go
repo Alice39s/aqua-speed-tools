@@ -5,7 +5,6 @@ import (
 	"aqua-speed-tools/internal/utils"
 	"fmt"
 	"sort"
-	"strings"
 )
 
 // ListNodes lists all available nodes
@@ -24,7 +23,7 @@ func (s *SpeedTest) ListNodes() error {
 		table.AddRow([]string{
 			node.Name.Zh,
 			node.Isp.Zh,
-			strings.ToUpper(node.GeoInfo.Type),
+			node.GeoInfo.Type,
 			id,
 		})
 	}

@@ -46,3 +46,8 @@ func (s *SpeedTest) GetNodes() []models.Node {
 	}
 	return nodes
 }
+
+// GetUpdater returns the updater instance
+func (s *SpeedTest) GetUpdater() *updater.Updater {
+	return s.updater
+}

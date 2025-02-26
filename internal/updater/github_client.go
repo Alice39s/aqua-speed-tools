@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"aqua-speed-tools/internal/utils"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,9 +20,10 @@ type GitHubRelease struct {
 	} `json:"assets"`
 }
 
-// GitHubClient defines the interface for fetching releases.
+// GitHubClient defines the interface for GitHub operations.
 type GitHubClient interface {
 	GetLatestRelease(ctx context.Context, apiURL string) (*GitHubRelease, error)
+	GetRawContent(ctx context.Context, rawURL string) ([]byte, error)
 }
 
 // DefaultGitHubClient is the default implementation of GitHubClient.
@@ -29,14 +31,16 @@ type DefaultGitHubClient struct {
 	client  *http.Client
 	logger  *zap.Logger
 	version string
+	urls    *utils.GitHubURLs
 }
 
 // NewDefaultGitHubClient creates a new DefaultGitHubClient instance.
-func NewDefaultGitHubClient(client *http.Client, logger *zap.Logger, version string) *DefaultGitHubClient {
+func NewDefaultGitHubClient(client *http.Client, logger *zap.Logger, version string, urls *utils.GitHubURLs) *DefaultGitHubClient {
 	return &DefaultGitHubClient{
 		client:  client,
 		logger:  logger,
 		version: version,
+		urls:    urls,
 	}
 }
 
@@ -73,4 +77,41 @@ func (c *DefaultGitHubClient) GetLatestRelease(ctx context.Context, apiURL strin
 	}
 
 	return &release, nil
+}
+
+// GetRawContent fetches raw content from GitHub.
+func (c *DefaultGitHubClient) GetRawContent(ctx context.Context, rawURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	userAgent := "Aqua-Speed-Updater/" + c.version
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch raw content: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return nil, fmt.Errorf("GitHub returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 限制为 10MB
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	return data, nil
+}
+
+// GetDefaultConfig fetches the default configuration from GitHub.
+func (c *DefaultGitHubClient) GetDefaultConfig(ctx context.Context, owner, repo string) ([]byte, error) {
+	rawURL := c.urls.BuildRawURL(owner, repo, "main", "configs/base.json")
+	c.logger.Debug("Fetching default config", zap.String("url", rawURL))
+
+	return c.GetRawContent(ctx, rawURL)
 }

@@ -11,144 +11,71 @@
 - :wrench: 多线程并发下载测试
 - :electric_plug: 支持 Patch 动态更新 (TODO)
 - :globe_with_meridians: 支持自定义镜像源
+- :shield: 支持 DNS over HTTPS
 
-## :inbox_tray: 使用方式
-
-### :book: 一键脚本
-
-```bash
-# 使用默认源
-bash <(curl -fsSL https://raw.githubusercontent.com/alice39s/aqua-speed-tools/main/scripts/i.sh)
-
-# 使用自定义镜像源
-bash <(curl -fsSL https://raw.githubusercontent.com/alice39s/aqua-speed-tools/main/scripts/i.sh) -s "https://glb.000000039.xyz"
-```
-
-### :hammer_and_wrench: 从源码编译
-
-#### :fork_and_knife: 克隆仓库
-
-```bash
-git clone https://github.com/alice39s/aqua-speed-tools.git
-cd aqua-speed-tools
-```
-
-#### :hammer: 编译
-
-```bash
-# (Linux / macOS)
-go build -o aqua-speed-tools cmd/tools/main.go
-
-# (Windows)
-go build -o aqua-speed-tools.exe cmd/tools/main.go
-```
-
-#### :running: 运行
-
-```bash
-# (Linux / macOS)
-./aqua-speed-tools
-
-# (Windows 需要带 .exe 后缀, 下文不再重复)
-./aqua-speed-tools.exe
-```
+## :inbox_tray: 安装方式
 
 ### :package: 下载预编译版本
 
-也可以直接下载预编译版本：
+#### Linux :penguin: / MacOS :apple:
 
-| 平台                       | 架构  | 下载链接                  |
-| :------------------------- | :---- | :------------------------ |
-| :penguin: Linux            | amd64 | [点我下载][linux-amd64]   |
-| :penguin: Linux            | arm64 | [点我下载][linux-arm64]   |
-| :desktop_computer: Windows | amd64 | [点我下载][windows-amd64] |
-| :desktop_computer: Windows | arm64 | ×[^1]                     |
-| :apple: macOS              | amd64 | [点我下载][darwin-amd64]  |
-| :apple: macOS              | arm64 | [点我下载][darwin-arm64]  |
+```bash
+# 需安装 curl
+curl -sL "https://github.com/alice39s/aqua-speed-tools/releases/latest/download/aqua-speed-tools-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')" -o aqua-speed-tools
 
-[linux-amd64]: https://github.com/alice39s/aqua-speed-tools/releases/latest/download/aqua-speed-tools-linux-amd64
-[linux-arm64]: https://github.com/alice39s/aqua-speed-tools/releases/latest/download/aqua-speed-tools-linux-arm64
-[windows-amd64]: https://github.com/alice39s/aqua-speed-tools/releases/latest/download/aqua-speed-tools-windows-amd64.exe
-[darwin-amd64]: https://github.com/alice39s/aqua-speed-tools/releases/latest/download/aqua-speed-tools-darwin-amd64
-[darwin-arm64]: https://github.com/alice39s/aqua-speed-tools/releases/latest/download/aqua-speed-tools-darwin-arm64
+# 国内用户可选镜像
+curl -sL "https://s3-lb01.000000039.xyz/download/Alice39s/aqua-speed-tools/latest/download/aqua-speed-tools-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')" -o aqua-speed-tools
 
-### :gear: 配置
+chmod +x aqua-speed-tools
 
-程序会自动在以下位置创建配置文件:
+./aqua-speed-tools
+```
 
-- Windows: `%APPDATA%/aqua-speed/config.json`
-- Linux: `/etc/aqua-speed/config.json`
-- MacOS: `~/Library/Application Support/aqua-speed/config.json`
+#### Windows :computer:
 
-## :memo: 配置文件
+```bash
+# 64位, 需安装 curl
+curl -sL https://github.com/alice39s/aqua-speed-tools/releases/latest/download/aqua-speed-tools-windows-amd64.exe -o aqua-speed-tools.exe
 
-配置文件是一个 JSON 文件，你可以根据需要自行编辑。
+# 国内用户可选镜像
+curl -sL https://s3-lb01.000000039.xyz/download/Alice39s/aqua-speed-tools/latest/download/aqua-speed-tools-windows-amd64.exe -o aqua-speed-tools.exe
 
-### :clipboard: 格式
+./aqua-speed-tools.exe
+```
 
-配置文件中每个节点包含以下字段：
+各平台预编译版本下载链接：
 
-#### 基本信息
+| 平台                       | 架构  | 下载链接                                                    |
+| :------------------------- | :---- | :---------------------------------------------------------- |
+| :penguin: Linux            | amd64 | [GitHub 源][linux-amd64] / [镜像源][linux-amd64-mirror]     |
+| :penguin: Linux            | arm64 | [GitHub 源][linux-arm64] / [镜像源][linux-arm64-mirror]     |
+| :desktop_computer: Windows | amd64 | [GitHub 源][windows-amd64] / [镜像源][windows-amd64-mirror] |
+| :desktop_computer: Windows | arm64 | ×[^1]                                                       |
+| :apple: macOS              | amd64 | [GitHub 源][darwin-amd64] / [镜像源][darwin-amd64-mirror]   |
+| :apple: macOS              | arm64 | [GitHub 源][darwin-arm64] / [镜像源][darwin-arm64-mirror]   |
 
-| 字段      | 说明             | 类型     | 示例           |
-| :-------- | :--------------- | :------- | :------------- |
-| `节点ID`  | 节点的唯一标识符 | `string` | `"cf"`         |
-| `name.zh` | 节点中文名称     | `string` | `"Cloudflare"` |
-| `name.en` | 节点英文名称     | `string` | `"Cloudflare"` |
-| `size`    | 测试文件大小(MB) | `number` | `100`          |
+### :hammer_and_wrench: 从源码编译
 
-#### ISP 信息
+```bash
+# 克隆仓库
+git clone https://github.com/alice39s/aqua-speed-tools.git
+cd aqua-speed-tools
 
-| 字段     | 说明        | 类型     | 示例        |
-| :------- | :---------- | :------- | :---------- |
-| `isp.zh` | ISP中文名称 | `string` | `"AS13335"` | **** |
-| `isp.en` | ISP英文名称 | `string` | `"AS13335"` |
-
-#### 测试配置
-
-| 字段      | 说明                                                   | 类型     | 示例                              |
-| :-------- | :----------------------------------------------------- | :------- | :-------------------------------- |
-| `url`     | 测试URL<br>*单文件测试需填写具体文件URL*               | `string` | `"https://speed.cloudflare.com/"` |
-| `threads` | 并发测试线程数                                         | `number` | `10`                              |
-| `type`    | 测试类型:<br>`SingleFile`/`LibreSpeed`/`Ookla`(开发中) | `string` | `"SingleFile"`                    |
-
-#### 地理位置
-
-| 字段                  | 说明                                       | 类型          | 示例        |
-| :-------------------- | :----------------------------------------- | :------------ | :---------- |
-| `geoInfo.countryCode` | 国家ISO-3166-1代码<br>*Anycast节点请填UN*  | `string`      | `"UN"`      |
-| `geoInfo.region`      | 地区<br>*Anycast节点请填null*              | `string/null` | `null`      |
-| `geoInfo.city`        | 城市<br>*Anycast节点请填null*              | `string/null` | `null`      |
-| `geoInfo.type`        | 节点类型:<br>`Anycast`/`CDN`/`IDC`/`OSS`等 | `string`      | `"Anycast"` |
-
-### :pushpin: 配置文件示例
-
-```json
-{
-    "cf": {
-        "name": {
-            "zh": "Cloudflare",
-            "en": "Cloudflare"
-        },
-        "size": 40,
-        "isp": {
-            "zh": "AS13335",
-            "en": "AS13335"
-        },
-        "url": "https://speed.cloudflare.com/",
-        "threads": 10,
-        "type": "SingleFile",
-        "geoInfo": {
-            "countryCode": "US",
-            "region": null,
-            "city": null,
-            "type": "Anycast"
-        }
-    }
-}
+# 编译
+go build -o aqua-speed-tools cmd/tools/main.go
 ```
 
 ## :rocket: 使用方法
+
+### :computer: 交互式模式
+
+直接运行程序即可进入交互式模式：
+
+```bash
+./aqua-speed-tools
+```
+
+### :keyboard: 命令行模式
 
 ```bash
 # 列出所有可用节点
@@ -156,36 +83,124 @@ go build -o aqua-speed-tools.exe cmd/tools/main.go
 
 # 测试指定节点速度
 ./aqua-speed-tools test <节点ID>
-
-# 测试所有节点 (不推荐)
-./aqua-speed-tools test all
-
-# 使用自定义镜像源
-./aqua-speed-tools --github-base-url "https://mirror.example.com/base" \
-                  --github-raw-base-url "https://mirror.example.com/raw" \
-                  --github-api-base-url "https://mirror.example.com/api" \
-                  list
 ```
 
-## :wrench: 技术栈
+### :gear: 高级选项
 
-- Go 1.24.0+
-- cobra (命令行框架)
-- go-pretty (表格输出)
-- zap (日志记录)
+```bash
+# 开启调试模式
+./aqua-speed-tools -d
+
+# 使用自定义 GitHub Raw 镜像
+./aqua-speed-tools --github-raw-magic-url https://raw.example.com
+
+# 使用自定义 GitHub API 镜像
+./aqua-speed-tools --github-api-magic-url https://api.example.com
+
+# 使用自定义 DNS over HTTPS 端点
+./aqua-speed-tools --doh-endpoint https://doh.pub/dns-query
+
+# 查看帮助
+./aqua-speed-tools -h
+```
+
+## :wrench: 配置文件
+
+程序会自动在以下位置创建配置文件:
+
+- Windows: `%APPDATA%/aqua-speed/config.json`
+- Linux: `/etc/aqua-speed/config.json`
+- MacOS: `~/Library/Application Support/aqua-speed/config.json`
+
+### :clipboard: 配置格式
+
+配置文件包含以下主要部分：
+
+#### 基本配置
+
+| 字段              | 说明               | 类型     | 示例                 |
+| :---------------- | :----------------- | :------- | :------------------- |
+| `script.version`  | 程序版本号         | `string` | `"3.0.0"`            |
+| `script.prefix`   | 程序前缀           | `string` | `"aqua-speed-tools"` |
+| `downloadTimeout` | 下载超时时间（秒） | `number` | `30`                 |
+
+#### GitHub 配置
+
+| 字段                   | 说明         | 类型       | 示例                                    |
+| :--------------------- | :----------- | :--------- | :-------------------------------------- |
+| `githubRepo`           | 主仓库       | `string`   | `"alice39s/aqua-speed"`                 |
+| `githubToolsRepo`      | 工具仓库     | `string`   | `"alice39s/aqua-speed-tools"`           |
+| `github_raw_magic_set` | Raw 镜像列表 | `string[]` | `["https://raw.githubusercontent.com"]` |
+
+#### DNS over HTTPS 配置
+
+| 字段                 | 说明           | 类型       | 示例       |
+| :------------------- | :------------- | :--------- | :--------- |
+| `dns_over_https_set` | DoH 服务器配置 | `object[]` | 见下方示例 |
+
+每个 DoH 配置包含：
+
+| 字段       | 说明         | 类型     | 示例                                     |
+| :--------- | :----------- | :------- | :--------------------------------------- |
+| `endpoint` | 服务器端点   | `string` | `"https://cloudflare-dns.com/dns-query"` |
+| `timeout`  | 超时时间(秒) | `number` | `10`                                     |
+| `retries`  | 重试次数     | `number` | `3`                                      |
+
+### :pushpin: 配置示例
+
+```json
+{
+  "script": {
+    "version": "3.0.0",
+    "prefix": "aqua-speed-tools"
+  },
+  "github_raw_magic_set": [
+    "https://raw.githubusercontent.com",
+    "https://raw.fastgit.org",
+    "https://raw.staticdn.net",
+    "https://raw.githubusercontents.com"
+  ],
+  "dns_over_https_set": [
+    {
+      "endpoint": "https://cloudflare-dns.com/dns-query",
+      "timeout": 10,
+      "retries": 3
+    },
+    {
+      "endpoint": "https://dns.google/dns-query",
+      "timeout": 10,
+      "retries": 3
+    }
+  ],
+  "downloadTimeout": 30,
+  "githubRepo": "alice39s/aqua-speed",
+  "githubToolsRepo": "alice39s/aqua-speed-tools"
+}
+```
 
 ## :clipboard: TODO
 
-- :dizzy: 支持将结果上传到服务器，并生成一个易于分享的网页和 OpenGraph 图片
-- :bar_chart: list 和 test 命令输出为 Markdown, CSV, JSON 等格式
-- :arrows_counterclockwise: 支持 Patch 动态更新
-- :art: 优化表格输出
-- :speech_balloon: 多语言支持
+- [ ] :dizzy: 支持将结果上传到服务器，并生成一个易于分享的网页和 OpenGraph 图片
+- [ ] :bar_chart: list 和 test 命令输出为 Markdown, CSV, JSON 等格式
+- [ ] :arrows_counterclockwise: 支持 Patch 动态更新
+- [x] :art: 优化表格输出
+- [ ] :speech_balloon: 多语言支持
+- [x] :shield: 支持 DNS over HTTPS
 
 ## :page_facing_up: 许可证
 
 本项目采用 [AGPL-3.0](LICENSE) 开源许可证。
 
 [aqua-speed]: https://github.com/alice39s/aqua-speed
+[linux-amd64]: https://github.com/alice39s/aqua-speed-tools/releases/latest/download/aqua-speed-tools-linux-amd64
+[linux-arm64]: https://github.com/alice39s/aqua-speed-tools/releases/latest/download/aqua-speed-tools-linux-arm64
+[windows-amd64]: https://github.com/alice39s/aqua-speed-tools/releases/latest/download/aqua-speed-tools-windows-amd64.exe
+[darwin-amd64]: https://github.com/alice39s/aqua-speed-tools/releases/latest/download/aqua-speed-tools-darwin-amd64
+[darwin-arm64]: https://github.com/alice39s/aqua-speed-tools/releases/latest/download/aqua-speed-tools-darwin-arm64
+[linux-amd64-mirror]: https://s3-lb01.000000039.xyz/download/Alice39s/aqua-speed-tools/latest/download/aqua-speed-tools-linux-amd64
+[linux-arm64-mirror]: https://s3-lb01.000000039.xyz/download/Alice39s/aqua-speed-tools/latest/download/aqua-speed-tools-linux-arm64
+[windows-amd64-mirror]: https://s3-lb01.000000039.xyz/download/Alice39s/aqua-speed-tools/latest/download/aqua-speed-tools-windows-amd64.exe
+[darwin-amd64-mirror]: https://s3-lb01.000000039.xyz/download/Alice39s/aqua-speed-tools/latest/download/aqua-speed-tools-darwin-amd64
+[darwin-arm64-mirror]: https://s3-lb01.000000039.xyz/download/Alice39s/aqua-speed-tools/latest/download/aqua-speed-tools-darwin-arm64
 
 [^1]: 由于测速客户端主程序 [aqua-speed] 使用 Bun 编写，而 Bun 暂不支持 Linux 交叉编译至 Windows ARM64 架构，如有需要，请自行 [编译安装](#hammer_and_wrench-从源码编译)。

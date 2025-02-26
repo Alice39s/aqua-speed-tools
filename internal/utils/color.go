@@ -10,4 +10,6 @@ var (
 	Purple = color.New(color.FgMagenta)
 	Cyan   = color.New(color.FgCyan)
 	Gray   = color.New(color.FgWhite)
+	Bold   = "\033[1m"
+	Reset  = "\033[0m"
 )

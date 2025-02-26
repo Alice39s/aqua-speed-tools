@@ -1,34 +1,42 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"time"
+
+	"aqua-speed-tools/internal/github"
 )
 
-type BinaryConfig struct {
-	Prefix string `json:"prefix"`
+// Config represents the application configuration
+type Config struct {
+	Script            ScriptConfig         `json:"script"`
+	GitHubRawMagicSet []string             `json:"github_raw_magic_set"`
+	DNSOverHTTPSSet   []DNSOverHTTPSConfig `json:"dns_over_https_set"`
+	GithubRawBaseUrl  string               `json:"githubRawBaseUrl"`
+	GithubApiBaseUrl  string               `json:"githubApiBaseUrl"`
+	GithubRepo        string               `json:"githubRepo"`
+	GithubToolsRepo   string               `json:"githubToolsRepo"`
+	DownloadTimeout   int                  `json:"downloadTimeout"`
 }
 
+// ScriptConfig represents the script configuration
 type ScriptConfig struct {
 	Version string `json:"version"`
 	Prefix  string `json:"prefix"`
 }
 
-type Config struct {
-	Binary           BinaryConfig `json:"binary"`
-	Script           ScriptConfig `json:"script"`
-	GithubBaseUrl    string       `json:"githubBaseUrl"`
-	GithubApiBaseUrl string       `json:"githubApiBaseUrl"`
-	GithubRawBaseUrl string       `json:"githubRawBaseUrl"`
-	GithubRepo       string       `json:"githubRepo"`
-	GithubToolsRepo  string       `json:"githubToolsRepo"`
-	TablePadding     int          `json:"tablePadding"`
-	LogLevel         string       `json:"logLevel"`
-	DownloadTimeout  int          `json:"downloadTimeout"`
+// DNSOverHTTPSConfig represents the DNS over HTTPS configuration
+type DNSOverHTTPSConfig struct {
+	Endpoint string `json:"endpoint"`
+	Timeout  int    `json:"timeout"`
+	Retries  int    `json:"retries"`
 }
 
-// Configuration error type
+// ConfigError represents a configuration error
 type ConfigError struct {
 	Field   string
 	Message string
@@ -38,75 +46,94 @@ func (e *ConfigError) Error() string {
 	return fmt.Sprintf("Configuration error: %s - %s", e.Field, e.Message)
 }
 
-func loadConfig() (*Config, error) {
-	data, err := os.ReadFile("configs/base.json")
+var (
+	// ConfigReader is the global configuration reader
+	ConfigReader = &Config{}
+)
+
+// LoadConfig loads the configuration from a file
+func LoadConfig(configPath string) error {
+	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %v", err)
+		if os.IsNotExist(err) {
+			// 如果配置文件不存在，尝试从远程获取默认配置
+			if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+				return fmt.Errorf("failed to create config directory: %w", err)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			client := github.NewClient(nil, "", "")
+			data, err = client.GetDefaultConfig(ctx, "alice39s", "aqua-speed-tools")
+			if err != nil {
+				return fmt.Errorf("failed to download default config: %w", err)
+			}
+
+			if err := os.WriteFile(configPath, data, 0644); err != nil {
+				return fmt.Errorf("failed to write default config: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to read config file: %w", err)
+		}
 	}
 
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %v", err)
+	if err := json.Unmarshal(data, ConfigReader); err != nil {
+		return fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	return &cfg, nil
+	if err := validateConfig(ConfigReader); err != nil {
+		return fmt.Errorf("config validation failed: %w", err)
+	}
+
+	return nil
 }
 
+// validateConfig validates the configuration
 func validateConfig(cfg *Config) error {
-	if cfg.Binary.Prefix == "" {
-		return &ConfigError{Field: "Binary.Prefix", Message: "cannot be empty"}
-	}
+	// Validate Script
 	if cfg.Script.Version == "" {
 		return &ConfigError{Field: "Script.Version", Message: "cannot be empty"}
 	}
 	if cfg.Script.Prefix == "" {
 		return &ConfigError{Field: "Script.Prefix", Message: "cannot be empty"}
 	}
-	if cfg.GithubBaseUrl == "" {
-		return &ConfigError{Field: "GithubBaseUrl", Message: "cannot be empty"}
-	}
-	if cfg.GithubApiBaseUrl == "" {
-		return &ConfigError{Field: "GithubApiBaseUrl", Message: "cannot be empty"}
-	}
-	if cfg.GithubRawBaseUrl == "" {
-		return &ConfigError{Field: "GithubRawBaseUrl", Message: "cannot be empty"}
-	}
+
+	// Validate GitHub configuration
 	if cfg.GithubRepo == "" {
 		return &ConfigError{Field: "GithubRepo", Message: "cannot be empty"}
 	}
 	if cfg.GithubToolsRepo == "" {
 		return &ConfigError{Field: "GithubToolsRepo", Message: "cannot be empty"}
 	}
-	if cfg.TablePadding < 0 || cfg.TablePadding > 10 {
-		return &ConfigError{Field: "TablePadding", Message: "cannot be negative or greater than 10"}
+
+	// Validate GitHubRawMagicSet
+	if len(cfg.GitHubRawMagicSet) == 0 {
+		return &ConfigError{Field: "GitHubRawMagicSet", Message: "must contain at least one URL"}
 	}
+	for i, magic := range cfg.GitHubRawMagicSet {
+		if magic == "" {
+			return &ConfigError{Field: fmt.Sprintf("GitHubRawMagicSet[%d]", i), Message: "cannot be empty"}
+		}
+	}
+
+	// Validate DNSOverHTTPSSet
+	for i, doh := range cfg.DNSOverHTTPSSet {
+		if doh.Endpoint == "" {
+			return &ConfigError{Field: fmt.Sprintf("DNSOverHTTPSSet[%d].Endpoint", i), Message: "cannot be empty"}
+		}
+		if doh.Timeout <= 0 {
+			return &ConfigError{Field: fmt.Sprintf("DNSOverHTTPSSet[%d].Timeout", i), Message: "must be greater than 0"}
+		}
+		if doh.Retries < 0 {
+			return &ConfigError{Field: fmt.Sprintf("DNSOverHTTPSSet[%d].Retries", i), Message: "cannot be negative"}
+		}
+	}
+
+	// Validate DownloadTimeout
 	if cfg.DownloadTimeout <= 0 {
 		return &ConfigError{Field: "DownloadTimeout", Message: "must be greater than 0"}
 	}
-	// 验证日志级别
-	validLogLevels := map[string]bool{
-		"debug": true,
-		"info":  true,
-		"warn":  true,
-		"error": true,
-	}
-	if !validLogLevels[cfg.LogLevel] {
-		return &ConfigError{Field: "LogLevel", Message: "must be debug, info, warn, or error"}
-	}
+
 	return nil
 }
-
-var ConfigReader = func() Config {
-	cfg, err := loadConfig()
-	if err != nil {
-		fmt.Printf("Error loading config: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := validateConfig(cfg); err != nil {
-		fmt.Printf("Config validation failed: %v\n", err)
-		os.Exit(1)
-	}
-
-	return *cfg
-}()
