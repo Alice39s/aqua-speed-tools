@@ -3,17 +3,17 @@
     "prefix": "aqua-speed"
   },
   "script": {
-    "version": "3.0.0",
+    "version": "3.0.1",
     "prefix": "aqua-speed-tools"
   },
-  "githubApiBaseUrl": "https://api.github.com",
-  "githubApiMagicUrl": "https://s3-lb01.000000039.xyz/api/",
-  "githubRawBaseUrl": "https://raw.githubusercontent.com",
-  "github_raw_magic_set": [
-    "https://raw.githubusercontent.com",
-    "https://raw.fastgit.org",
-    "https://raw.staticdn.net",
-    "https://raw.githubusercontents.com"
+  "github_api_base_url": "https://api.github.com",
+  "github_api_magic_url": "https://s3-lb01.000000039.xyz/api/",
+  "github_raw_base_url": "https://raw.githubusercontent.com",
+  "github_raw_jsdelivr_set": [
+    "https://gcore.jsdelivr.net/gh",
+    "https://fastly.jsdelivr.net/gh",
+    "https://testingcf.jsdelivr.net/gh",
+    "https://cdn.jsdelivr.net/gh"
   ],
   "dns_over_https_set": [
     {
@@ -27,9 +27,7 @@
       "retries": 3
     }
   ],
-  "tablePadding": 2,
-  "logLevel": "info",
-  "downloadTimeout": 30,
-  "githubRepo": "alice39s/aqua-speed",
-  "githubToolsRepo": "alice39s/aqua-speed-tools"
+  "table_padding": 2,
+  "log_level": "info",
+  "download_timeout": 30
 }

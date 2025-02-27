@@ -16,7 +16,7 @@ type GitHubURLs struct {
 }
 
 // NewGitHubURLs creates a new GitHubURLs instance
-func NewGitHubURLs(rawMagicURL, apiMagicURL string, rawMagicSet []string) *GitHubURLs {
+func NewGitHubURLs(rawMagicURL, apiMagicURL string, rawJsdelivrSet []string) *GitHubURLs {
 	urls := &GitHubURLs{
 		RawBaseURL: "https://raw.githubusercontent.com",
 		APIURL:     "https://api.github.com",
@@ -25,9 +25,9 @@ func NewGitHubURLs(rawMagicURL, apiMagicURL string, rawMagicSet []string) *GitHu
 	// If Raw Magic URL is provided, use it
 	if rawMagicURL != "" {
 		urls.RawBaseURL = normalizeURL(rawMagicURL)
-	} else if len(rawMagicSet) > 0 {
+	} else if len(rawJsdelivrSet) > 0 {
 		// Otherwise, try to find the best available URL from the set
-		if bestURL := findBestRawURL(rawMagicSet); bestURL != "" {
+		if bestURL := findBestRawURL(rawJsdelivrSet); bestURL != "" {
 			urls.RawBaseURL = normalizeURL(bestURL)
 		}
 	}

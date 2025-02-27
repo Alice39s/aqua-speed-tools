@@ -29,6 +29,9 @@ curl -sL "https://s3-lb01.000000039.xyz/download/Alice39s/aqua-speed-tools/lates
 chmod +x aqua-speed-tools
 
 ./aqua-speed-tools
+
+# 国内用户可使用镜像模式
+./aqua-speed-tools --use-mirrors
 ```
 
 #### Windows :computer:
@@ -41,6 +44,9 @@ curl -sL https://github.com/alice39s/aqua-speed-tools/releases/latest/download/a
 curl -sL https://s3-lb01.000000039.xyz/download/Alice39s/aqua-speed-tools/latest/download/aqua-speed-tools-windows-amd64.exe -o aqua-speed-tools.exe
 
 ./aqua-speed-tools.exe
+
+# 国内用户可使用镜像模式
+./aqua-speed-tools.exe --use-mirrors
 ```
 
 各平台预编译版本下载链接：
@@ -106,11 +112,11 @@ go build -o aqua-speed-tools cmd/tools/main.go
 
 ## :wrench: 配置文件
 
-程序会自动在以下位置创建配置文件:
+程序会自动在以下位置创建配置文件，您可以 **根据需要** 进行修改：
 
-- Windows: `%APPDATA%/aqua-speed/config.json`
-- Linux: `/etc/aqua-speed/config.json`
-- MacOS: `~/Library/Application Support/aqua-speed/config.json`
+- Windows: `%APPDATA%/aqua-speed-tools/base.json`
+- Linux: `/etc/aqua-speed-tools/base.json`
+- MacOS: `~/Library/Application\ Support/aqua-speed-tools/base.json`
 
 ### :clipboard: 配置格式
 
@@ -118,19 +124,18 @@ go build -o aqua-speed-tools cmd/tools/main.go
 
 #### 基本配置
 
-| 字段              | 说明               | 类型     | 示例                 |
-| :---------------- | :----------------- | :------- | :------------------- |
-| `script.version`  | 程序版本号         | `string` | `"3.0.0"`            |
-| `script.prefix`   | 程序前缀           | `string` | `"aqua-speed-tools"` |
-| `downloadTimeout` | 下载超时时间（秒） | `number` | `30`                 |
+| 字段               | 说明               | 类型     | 示例                 |
+| :----------------- | :----------------- | :------- | :------------------- |
+| `script.version`   | 程序版本号         | `string` | `"3.0.0"`            |
+| `script.prefix`    | 程序前缀           | `string` | `"aqua-speed-tools"` |
+| `download_timeout` | 下载超时时间（秒） | `number` | `30`                 |
 
 #### GitHub 配置
 
-| 字段                   | 说明         | 类型       | 示例                                    |
-| :--------------------- | :----------- | :--------- | :-------------------------------------- |
-| `githubRepo`           | 主仓库       | `string`   | `"alice39s/aqua-speed"`                 |
-| `githubToolsRepo`      | 工具仓库     | `string`   | `"alice39s/aqua-speed-tools"`           |
-| `github_raw_magic_set` | Raw 镜像列表 | `string[]` | `["https://raw.githubusercontent.com"]` |
+| 字段                      | 说明              | 类型       | 示例                                                          |
+| :------------------------ | :---------------- | :--------- | :------------------------------------------------------------ |
+| `github_api_magic_url`    | GitHub API 镜像   | `string`   | `"[alice39s/aqua-speed](https://s3-lb01.000000039.xyz/api/)"` |
+| `github_raw_jsdelivr_set` | JSDelivr 镜像列表 | `string[]` | `["https://gcore.jsdelivr.net/gh"]`                           |
 
 #### DNS over HTTPS 配置
 
@@ -150,31 +155,37 @@ go build -o aqua-speed-tools cmd/tools/main.go
 
 ```json
 {
+  "binary": {
+    "prefix": "aqua-speed"
+  },
   "script": {
     "version": "3.0.0",
     "prefix": "aqua-speed-tools"
   },
-  "github_raw_magic_set": [
-    "https://raw.githubusercontent.com",
-    "https://raw.fastgit.org",
-    "https://raw.staticdn.net",
-    "https://raw.githubusercontents.com"
+  "github_api_base_url": "https://api.github.com",
+  "github_api_magic_url": "https://s3-lb01.000000039.xyz/api/",
+  "github_raw_base_url": "https://raw.githubusercontent.com",
+  "github_raw_jsdelivr_set": [
+    "https://gcore.jsdelivr.net/gh",
+    "https://fastly.jsdelivr.net/gh",
+    "https://testingcf.jsdelivr.net/gh",
+    "https://cdn.jsdelivr.net/gh"
   ],
   "dns_over_https_set": [
     {
-      "endpoint": "https://cloudflare-dns.com/dns-query",
+      "endpoint": "https://dns.alidns.com/dns-query",
       "timeout": 10,
       "retries": 3
     },
     {
-      "endpoint": "https://dns.google/dns-query",
+      "endpoint": "https://cloudflare-dns.com/dns-query",
       "timeout": 10,
       "retries": 3
     }
   ],
-  "downloadTimeout": 30,
-  "githubRepo": "alice39s/aqua-speed",
-  "githubToolsRepo": "alice39s/aqua-speed-tools"
+  "table_padding": 2,
+  "log_level": "info",
+  "download_timeout": 30
 }
 ```
 

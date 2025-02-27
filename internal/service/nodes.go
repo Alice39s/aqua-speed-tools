@@ -1,18 +1,21 @@
 package service
 
 import (
+	"aqua-speed-tools/internal/config"
 	"aqua-speed-tools/internal/models"
 	"aqua-speed-tools/internal/utils"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
 // initNodes initializes the speed test node list
 func (s *SpeedTest) initNodes() error {
-	url := fmt.Sprintf("%s/%s/main/presets/config.json", s.config.GithubRawBaseUrl, s.config.GithubToolsRepo)
+	owner, repo := splitRepo(config.DefaultGithubToolsRepo)
+	url := fmt.Sprintf("%s/%s/%s/main/presets/config.json", s.config.GithubRawBaseURL, owner, repo)
 
 	// Validate URL
 	if url == "" {
@@ -32,6 +35,15 @@ func (s *SpeedTest) initNodes() error {
 	utils.Green.Printf("Successfully loaded %d nodes\n", len(s.nodes))
 
 	return nil
+}
+
+// splitRepo splits a repository string into owner and repo parts
+func splitRepo(fullRepo string) (owner, repo string) {
+	parts := strings.Split(fullRepo, "/")
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return parts[0], parts[1]
 }
 
 func (s *SpeedTest) fetchNodeData(url string) ([]byte, error) {

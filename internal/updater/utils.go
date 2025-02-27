@@ -45,20 +45,22 @@ func FormatCompressedName(prefix, osName, arch, version string) string {
 }
 
 // GetInstallDir determines the installation directory based on the OS.
-func GetInstallDir(appName string) string {
+
+// GetInstallDir returns the installation directory for aqua-speed
+func GetInstallDir() string {
 	switch runtime.GOOS {
 	case "windows":
-		return filepath.Join(os.Getenv("APPDATA"), appName)
-	case "linux":
-		return "/etc/" + appName
-	case "freebsd":
-		return "/usr/local/" + appName
+		return filepath.Join(os.Getenv("APPDATA"), "aqua-speed")
 	case "darwin":
-		return filepath.Join(os.Getenv("HOME"), "Library/Application Support", appName)
-	default:
-		return "/etc/" + appName
+		return filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "aqua-speed")
+	default: // linux and others
+		if os.Getuid() == 0 {
+			return "/etc/aqua-speed"
+		}
+		return filepath.Join(os.Getenv("HOME"), ".config", "aqua-speed")
 	}
 }
+
 
 // CalculateChecksum computes the SHA1 checksum of the given data.
 func CalculateChecksum(data []byte) (string, error) {

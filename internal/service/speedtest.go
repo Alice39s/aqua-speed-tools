@@ -5,6 +5,8 @@ import (
 	"aqua-speed-tools/internal/models"
 	"aqua-speed-tools/internal/updater"
 	"fmt"
+
+	"go.uber.org/zap"
 )
 
 // SpeedTest provides network speed testing functionality
@@ -12,6 +14,7 @@ type SpeedTest struct {
 	config  config.Config    // Configuration information
 	nodes   models.NodeList  // Node list
 	updater *updater.Updater // Updater
+	logger  *zap.Logger      // Logger
 }
 
 // NewSpeedTest creates a new SpeedTest instance
@@ -21,18 +24,25 @@ func NewSpeedTest(cfg config.Config) (*SpeedTest, error) {
 		return nil, fmt.Errorf("failed to create updater: %w", err)
 	}
 
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create logger: %w", err)
+	}
+
 	return &SpeedTest{
 		config:  cfg,
 		nodes:   make(models.NodeList),
 		updater: updater,
+		logger:  logger,
 	}, nil
 }
 
-// Init initializes the SpeedTest service
+// Init initializes the speed test environment
 func (s *SpeedTest) Init() error {
-	// Check for updates and get latest version
+	// 检查更新
 	if err := s.updater.CheckAndUpdate(); err != nil {
-		return fmt.Errorf("update check failed: %w", err)
+		s.logger.Error("Failed to check for updates", zap.Error(err))
+		// 继续执行，不要因为更新检查失败而中断
 	}
 
 	// Initialize nodes

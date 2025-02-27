@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
 	"aqua-speed-tools/internal/github"
@@ -13,14 +15,15 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Script            ScriptConfig         `json:"script"`
-	GitHubRawMagicSet []string             `json:"github_raw_magic_set"`
-	DNSOverHTTPSSet   []DNSOverHTTPSConfig `json:"dns_over_https_set"`
-	GithubRawBaseUrl  string               `json:"githubRawBaseUrl"`
-	GithubApiBaseUrl  string               `json:"githubApiBaseUrl"`
-	GithubRepo        string               `json:"githubRepo"`
-	GithubToolsRepo   string               `json:"githubToolsRepo"`
-	DownloadTimeout   int                  `json:"downloadTimeout"`
+	Script               ScriptConfig         `json:"script"`
+	GithubRawJsdelivrSet []string             `json:"github_raw_jsdelivr_set"`
+	DNSOverHTTPSSet      []DNSOverHTTPSConfig `json:"dns_over_https_set"`
+	GithubRawBaseURL     string               `json:"github_raw_base_url"`
+	GithubAPIBaseURL     string               `json:"github_api_base_url"`
+	GithubAPIURL         string               `json:"github_api_magic_url"`
+	TablePadding         int                  `json:"table_padding"`
+	LogLevel             string               `json:"log_level"`
+	DownloadTimeout      int                  `json:"download_timeout"`
 }
 
 // ScriptConfig represents the script configuration
@@ -49,10 +52,34 @@ func (e *ConfigError) Error() string {
 var (
 	// ConfigReader is the global configuration reader
 	ConfigReader = &Config{}
+
+	// 硬编码的仓库信息
+	DefaultGithubRepo      = "alice39s/aqua-speed"
+	DefaultGithubToolsRepo = "alice39s/aqua-speed-tools"
 )
+
+// GetConfigDir returns the configuration directory based on the operating system
+func GetConfigDir() string {
+	switch runtime.GOOS {
+	case "windows":
+		return filepath.Join(os.Getenv("APPDATA"), "aqua-speed-tools")
+	case "darwin":
+		return filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "aqua-speed-tools")
+	default: // linux and others
+		if os.Getuid() == 0 {
+			return "/etc/aqua-speed-tools"
+		}
+		return filepath.Join(os.Getenv("HOME"), ".config", "aqua-speed-tools")
+	}
+}
 
 // LoadConfig loads the configuration from a file
 func LoadConfig(configPath string) error {
+	// 如果没有指定配置路径，使用默认路径
+	if configPath == "" {
+		configPath = filepath.Join(GetConfigDir(), "base.json")
+	}
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -65,7 +92,8 @@ func LoadConfig(configPath string) error {
 			defer cancel()
 
 			client := github.NewClient(nil, "", "")
-			data, err = client.GetDefaultConfig(ctx, "alice39s", "aqua-speed-tools")
+			owner, repo := splitRepo(DefaultGithubToolsRepo)
+			data, err = client.GetDefaultConfig(ctx, owner, repo)
 			if err != nil {
 				return fmt.Errorf("failed to download default config: %w", err)
 			}
@@ -99,21 +127,13 @@ func validateConfig(cfg *Config) error {
 		return &ConfigError{Field: "Script.Prefix", Message: "cannot be empty"}
 	}
 
-	// Validate GitHub configuration
-	if cfg.GithubRepo == "" {
-		return &ConfigError{Field: "GithubRepo", Message: "cannot be empty"}
+	// Validate GitHubRawJsdelivrSet
+	if len(cfg.GithubRawJsdelivrSet) == 0 {
+		return &ConfigError{Field: "GitHubRawJsdelivrSet", Message: "must contain at least one URL"}
 	}
-	if cfg.GithubToolsRepo == "" {
-		return &ConfigError{Field: "GithubToolsRepo", Message: "cannot be empty"}
-	}
-
-	// Validate GitHubRawMagicSet
-	if len(cfg.GitHubRawMagicSet) == 0 {
-		return &ConfigError{Field: "GitHubRawMagicSet", Message: "must contain at least one URL"}
-	}
-	for i, magic := range cfg.GitHubRawMagicSet {
-		if magic == "" {
-			return &ConfigError{Field: fmt.Sprintf("GitHubRawMagicSet[%d]", i), Message: "cannot be empty"}
+	for i, jsdelivr := range cfg.GithubRawJsdelivrSet {
+		if jsdelivr == "" {
+			return &ConfigError{Field: fmt.Sprintf("GitHubRawJsdelivrSet[%d]", i), Message: "cannot be empty"}
 		}
 	}
 
@@ -136,4 +156,13 @@ func validateConfig(cfg *Config) error {
 	}
 
 	return nil
+}
+
+// splitRepo splits a repository string into owner and repo parts
+func splitRepo(fullRepo string) (owner, repo string) {
+	parts := strings.Split(fullRepo, "/")
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return parts[0], parts[1]
 }

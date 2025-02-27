@@ -2,6 +2,7 @@ package updater
 
 import (
 	"aqua-speed-tools/internal/config"
+	"aqua-speed-tools/internal/utils"
 	"bytes"
 	"context"
 	"fmt"
@@ -13,8 +14,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
-	"aqua-speed-tools/internal/utils"
 
 	"github.com/blang/semver/v4"
 	"github.com/schollz/progressbar/v3"
@@ -48,22 +47,21 @@ func New(currentVersion string) (*Updater, error) {
 	// 确保配置已加载，如果没有则使用默认值
 	if config.ConfigReader == nil {
 		config.ConfigReader = &config.Config{
-			GithubRawBaseUrl: "https://raw.githubusercontent.com",
-			GithubApiBaseUrl: "https://api.github.com",
-			GithubRepo:       "alice39s/aqua-speed-tools",
+			GithubRawBaseURL: "https://raw.githubusercontent.com",
+			GithubAPIBaseURL: "https://api.github.com",
 			DownloadTimeout:  30,
 		}
 	}
 
 	urls := utils.NewGitHubURLs(
-		config.ConfigReader.GithubRawBaseUrl,
-		config.ConfigReader.GithubApiBaseUrl,
-		config.ConfigReader.GitHubRawMagicSet,
+		config.ConfigReader.GithubRawBaseURL,
+		config.ConfigReader.GithubAPIBaseURL,
+		config.ConfigReader.GithubRawJsdelivrSet,
 	)
 
 	return &Updater{
 		Version:        parsedVersion,
-		InstallDir:     GetInstallDir("aqua-speed"),
+		InstallDir:     GetInstallDir(),
 		BinaryName:     binaryName,
 		CompressedName: compressedName,
 		logger:         logger,
@@ -75,7 +73,7 @@ func New(currentVersion string) (*Updater, error) {
 // NewWithLocalVersion creates a new Updater instance with the local version.
 // If reading the local version fails, it falls back to the default version.
 func NewWithLocalVersion(defaultVersion string) (*Updater, error) {
-	versionFile := filepath.Join(GetInstallDir("aqua-speed"), "version.txt")
+	versionFile := filepath.Join(GetInstallDir(), "version.txt")
 	content, err := ReadFileContent(versionFile)
 	if err != nil {
 		// If read failed, use default version
@@ -96,57 +94,88 @@ func (u *Updater) GetLatestVersion() (semver.Version, string, string, error) {
 		return semver.Version{}, "", "", fmt.Errorf("github client is nil")
 	}
 
-	// 确保 GithubRepo 不为空
-	if config.ConfigReader.GithubRepo == "" {
-		config.ConfigReader.GithubRepo = "alice39s/aqua-speed-tools"
+	// 确保 GithubRepo 不为空并且格式正确
+	repo := strings.Trim(config.DefaultGithubRepo, "/")
+	if !strings.Contains(repo, "/") {
+		return semver.Version{}, "", "", fmt.Errorf("invalid repository format: %s", repo)
 	}
 
-	apiURL := fmt.Sprintf("%s/repos/%s/releases/latest",
-		strings.TrimSuffix(config.ConfigReader.GithubApiBaseUrl, "/"),
-		strings.TrimPrefix(config.ConfigReader.GithubRepo, "/"))
+	owner, repoName := splitRepo(repo)
+	baseURL := strings.TrimSuffix(config.ConfigReader.GithubAPIBaseURL, "/")
+	apiURL := fmt.Sprintf("%s/repos/%s/%s/releases/latest", baseURL, owner, repoName)
+
+	u.logger.Debug("Fetching latest release",
+		zap.String("apiURL", apiURL),
+		zap.String("repo", repo),
+		zap.String("currentVersion", u.Version.String()))
 
 	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	release, err := u.githubClient.GetLatestRelease(ctx, apiURL)
 	if err != nil {
-		return semver.Version{}, "", "", err
+		u.logger.Error("Failed to fetch latest release",
+			zap.String("apiURL", apiURL),
+			zap.Error(err))
+		return semver.Version{}, "", "", fmt.Errorf("failed to fetch latest release: %w", err)
 	}
 
 	// Parse and validate version
 	latestVersion, err := ParseVersion(release.TagName)
 	if err != nil {
+		u.logger.Error("Failed to parse version",
+			zap.String("tagName", release.TagName),
+			zap.Error(err))
 		return semver.Version{}, "", "", WrapError("parse latest version", err)
 	}
 
 	// Determine the appropriate asset name
 	arch := NormalizeArch(runtime.GOARCH)
-	assetName := FormatCompressedName("aqua-speed", runtime.GOOS, arch, release.TagName)
-
+	expectedPrefix := fmt.Sprintf("aqua-speed-%s-%s", runtime.GOOS, arch)
 	u.logger.Debug("Looking for asset",
-		zap.String("assetName", assetName),
+		zap.String("expectedPrefix", expectedPrefix),
 		zap.String("version", latestVersion.String()),
-		zap.Int("totalAssets", len(release.Assets)))
+		zap.Int("totalAssets", len(release.Assets)),
+		zap.Any("assets", release.Assets))
 
 	var downloadURL string
+	var matchedAssetName string
 	for _, asset := range release.Assets {
-		if asset.Name == assetName {
+		// 忽略 checksums.txt 文件
+		if asset.Name == "checksums.txt" {
+			continue
+		}
+		// 检查资产名称是否以预期前缀开头
+		if strings.HasPrefix(asset.Name, expectedPrefix) {
 			downloadURL = asset.BrowserDownloadURL
+			matchedAssetName = asset.Name
 			break
 		}
 	}
 
 	if downloadURL == "" {
-		return semver.Version{}, "", "", fmt.Errorf("no matching asset found for %s (available assets: %d)", assetName, len(release.Assets))
+		u.logger.Error("No matching asset found",
+			zap.String("expectedPrefix", expectedPrefix),
+			zap.Int("totalAssets", len(release.Assets)),
+			zap.Any("availableAssets", release.Assets))
+		return semver.Version{}, "", "", fmt.Errorf("no matching asset found for %s (available assets: %d)", expectedPrefix, len(release.Assets))
 	}
+
+	u.logger.Debug("Found matching asset",
+		zap.String("assetName", matchedAssetName),
+		zap.String("downloadURL", downloadURL),
+		zap.String("version", latestVersion.String()))
 
 	// Validate download URL
 	if _, err := url.Parse(downloadURL); err != nil {
+		u.logger.Error("Invalid download URL",
+			zap.String("downloadURL", downloadURL),
+			zap.Error(err))
 		return semver.Version{}, "", "", fmt.Errorf("invalid download URL %q: %w", downloadURL, err)
 	}
 
-	return latestVersion, downloadURL, assetName, nil
+	return latestVersion, downloadURL, matchedAssetName, nil
 }
 
 // NeedsUpdate determines if an update is needed by comparing the current version with the latest version.
@@ -406,4 +435,13 @@ func readChecksumFromContent(content string) string {
 		return parts[0]
 	}
 	return content
+}
+
+// splitRepo splits a repository string into owner and repo parts
+func splitRepo(fullRepo string) (owner, repo string) {
+	parts := strings.Split(fullRepo, "/")
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return parts[0], parts[1]
 }
