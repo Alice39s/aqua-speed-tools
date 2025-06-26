@@ -320,6 +320,10 @@ func (u *Updater) downloadWithProgress(downloadURL string) ([]byte, error) {
 		return nil, WrapError("download", err)
 	}
 
+	// Ensure progress bar completes and add a newline
+	bar.Finish()
+	fmt.Println() // Add newline for clean output
+
 	return buf.Bytes(), nil
 }
 
