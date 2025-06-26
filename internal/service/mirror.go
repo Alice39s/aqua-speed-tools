@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"aqua-speed-tools/internal/utils"
+
 	"go.uber.org/zap"
 )
 
@@ -48,6 +50,8 @@ func (m *MirrorTester) testSingleMirror(ctx context.Context, mirrorURL string) M
 		m.logger.Debug("创建请求失败", zap.String("url", mirrorURL), zap.Error(err))
 		return result
 	}
+
+	req.Header.Set("User-Agent", utils.GetUserAgent("Aqua-Speed-MirrorTester"))
 
 	resp, err := m.client.Do(req)
 	if err != nil {

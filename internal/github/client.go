@@ -1,6 +1,7 @@
 package github
 
 import (
+	"aqua-speed-tools/internal/utils"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ type Client struct {
 	httpClient *http.Client
 	baseURL    string
 	rawBaseURL string
+	userAgent  string
 }
 
 // NewClient creates a new GitHub client
@@ -30,7 +32,13 @@ func NewClient(httpClient *http.Client, baseURL, rawBaseURL string) *Client {
 		httpClient: httpClient,
 		baseURL:    baseURL,
 		rawBaseURL: rawBaseURL,
+		userAgent:  utils.GetUserAgent("Aqua-Speed-Tools"), // use dynamic version
 	}
+}
+
+// SetUserAgent sets the user agent for the client
+func (c *Client) SetUserAgent(userAgent string) {
+	c.userAgent = userAgent
 }
 
 // GetDefaultConfig fetches the default configuration from GitHub
@@ -41,6 +49,9 @@ func (c *Client) GetDefaultConfig(ctx context.Context, owner, repo string) ([]by
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	// Set proper User-Agent header
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -68,6 +79,9 @@ func (c *Client) GetLatestRelease(ctx context.Context, owner, repo string) (stri
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
+
+	// Set proper User-Agent header
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -97,6 +111,9 @@ func (c *Client) GetRawContent(ctx context.Context, owner, repo, branch, filepat
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	// Set proper User-Agent header
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -287,7 +287,16 @@ func (u *Updater) performUpdate(tempDir, downloadURL string, latestVersion semve
 
 // downloadWithProgress downloads a file from the given URL and displays a progress bar.
 func (u *Updater) downloadWithProgress(downloadURL string) ([]byte, error) {
-	resp, err := u.client.Get(downloadURL)
+	req, err := http.NewRequest(http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return nil, WrapError("create download request", err)
+	}
+
+	// Set proper User-Agent header
+	userAgent := "Aqua-Speed-Updater/" + u.Version.String()
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := u.client.Do(req)
 	if err != nil {
 		return nil, WrapError("download", err)
 	}

@@ -164,7 +164,15 @@ func findBestRawURL(urls []string) string {
 					time.Sleep(time.Second * time.Duration(attempt))
 				}
 
-				resp, err := client.Get(u)
+				req, err := http.NewRequest(http.MethodGet, u, nil)
+				if err != nil {
+					continue
+				}
+
+				// Set proper User-Agent header
+				req.Header.Set("User-Agent", GetUserAgent("Aqua-Speed-URLTester"))
+
+				resp, err := client.Do(req)
 				if err != nil {
 					continue
 				}

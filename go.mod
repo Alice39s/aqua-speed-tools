@@ -5,13 +5,13 @@ go 1.24.4
 require github.com/jedib0t/go-pretty/v6 v6.6.5
 
 require (
+	github.com/miekg/dns v1.1.63
 	github.com/schollz/progressbar/v3 v3.17.1
 	github.com/ulikunitz/xz v0.5.12
 	go.uber.org/zap v1.27.0
 )
 
 require (
-	github.com/miekg/dns v1.1.63 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/mod v0.18.0 // indirect

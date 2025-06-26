@@ -34,6 +34,9 @@ var (
 )
 
 func main() {
+	// Set global app version
+	utils.SetAppVersion(version)
+
 	if err := execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Execution error: %v\n", err)
 		os.Exit(1)
