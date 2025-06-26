@@ -32,3 +32,6 @@ build/
 dist/
 
 main
+
+*.md
+!README.md

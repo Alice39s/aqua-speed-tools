@@ -20,7 +20,7 @@ type Config struct {
 	DNSOverHTTPSSet      []DNSOverHTTPSConfig `json:"dns_over_https_set"`
 	GithubRawBaseURL     string               `json:"github_raw_base_url"`
 	GithubAPIBaseURL     string               `json:"github_api_base_url"`
-	GithubAPIURL         string               `json:"github_api_magic_url"`
+	GithubAPIMagicURL    string               `json:"github_api_magic_url"`
 	TablePadding         int                  `json:"table_padding"`
 	LogLevel             string               `json:"log_level"`
 	DownloadTimeout      int                  `json:"download_timeout"`

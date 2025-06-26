@@ -32,7 +32,7 @@ type Updater struct {
 }
 
 // New creates a new Updater instance.
-func New(currentVersion string) (*Updater, error) {
+func New(currentVersion string, urls *utils.GitHubURLs) (*Updater, error) {
 	logger := InitLogger()
 
 	parsedVersion, err := ParseVersion(currentVersion)
@@ -44,20 +44,14 @@ func New(currentVersion string) (*Updater, error) {
 	binaryName := FormatBinaryName("aqua-speed", runtime.GOOS, arch)
 	compressedName := FormatCompressedName("aqua-speed", runtime.GOOS, arch, currentVersion)
 
-	// 确保配置已加载，如果没有则使用默认值
-	if config.ConfigReader == nil {
-		config.ConfigReader = &config.Config{
-			GithubRawBaseURL: "https://raw.githubusercontent.com",
-			GithubAPIBaseURL: "https://api.github.com",
-			DownloadTimeout:  30,
-		}
+	// 如果没有提供 URLs，使用默认值
+	if urls == nil {
+		urls = utils.NewGitHubURLs(
+			config.ConfigReader.GithubRawBaseURL,
+			config.ConfigReader.GithubAPIBaseURL,
+			config.ConfigReader.GithubRawJsdelivrSet,
+		)
 	}
-
-	urls := utils.NewGitHubURLs(
-		config.ConfigReader.GithubRawBaseURL,
-		config.ConfigReader.GithubAPIBaseURL,
-		config.ConfigReader.GithubRawJsdelivrSet,
-	)
 
 	return &Updater{
 		Version:        parsedVersion,
@@ -70,22 +64,27 @@ func New(currentVersion string) (*Updater, error) {
 	}, nil
 }
 
-// NewWithLocalVersion creates a new Updater instance with the local version.
-// If reading the local version fails, it falls back to the default version.
-func NewWithLocalVersion(defaultVersion string) (*Updater, error) {
+// NewWithLocalVersionAndURLs creates a new Updater instance with the local version and custom GitHub URLs.
+func NewWithLocalVersionAndURLs(defaultVersion string, urls *utils.GitHubURLs) (*Updater, error) {
 	versionFile := filepath.Join(GetInstallDir(), "version.txt")
 	content, err := ReadFileContent(versionFile)
 	if err != nil {
 		// If read failed, use default version
-		return New(defaultVersion)
+		return New(defaultVersion, urls)
 	}
 
 	parts := strings.Fields(content)
 	if len(parts) > 0 {
-		return New(parts[0])
+		return New(parts[0], urls)
 	}
 
-	return New(defaultVersion)
+	return New(defaultVersion, urls)
+}
+
+// NewWithLocalVersion creates a new Updater instance with the local version.
+// If reading the local version fails, it falls back to the default version.
+func NewWithLocalVersion(defaultVersion string) (*Updater, error) {
+	return NewWithLocalVersionAndURLs(defaultVersion, nil)
 }
 
 // GetLatestVersion fetches the latest version and its download URL from GitHub.
@@ -101,13 +100,19 @@ func (u *Updater) GetLatestVersion() (semver.Version, string, string, error) {
 	}
 
 	owner, repoName := splitRepo(repo)
-	baseURL := strings.TrimSuffix(config.ConfigReader.GithubAPIBaseURL, "/")
+	baseURL := strings.TrimSuffix(config.ConfigReader.GithubAPIMagicURL, "/")
+	if baseURL == "" {
+		baseURL = strings.TrimSuffix(config.ConfigReader.GithubAPIBaseURL, "/")
+	}
 	apiURL := fmt.Sprintf("%s/repos/%s/%s/releases/latest", baseURL, owner, repoName)
 
 	u.logger.Debug("Fetching latest release",
 		zap.String("apiURL", apiURL),
 		zap.String("repo", repo),
-		zap.String("currentVersion", u.Version.String()))
+		zap.String("currentVersion", u.Version.String()),
+		zap.String("baseURL", baseURL),
+		zap.String("magicURL", config.ConfigReader.GithubAPIMagicURL),
+		zap.String("baseAPIURL", config.ConfigReader.GithubAPIBaseURL))
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -142,11 +147,9 @@ func (u *Updater) GetLatestVersion() (semver.Version, string, string, error) {
 	var downloadURL string
 	var matchedAssetName string
 	for _, asset := range release.Assets {
-		// 忽略 checksums.txt 文件
 		if asset.Name == "checksums.txt" {
 			continue
 		}
-		// 检查资产名称是否以预期前缀开头
 		if strings.HasPrefix(asset.Name, expectedPrefix) {
 			downloadURL = asset.BrowserDownloadURL
 			matchedAssetName = asset.Name
@@ -166,6 +169,25 @@ func (u *Updater) GetLatestVersion() (semver.Version, string, string, error) {
 		zap.String("assetName", matchedAssetName),
 		zap.String("downloadURL", downloadURL),
 		zap.String("version", latestVersion.String()))
+
+	// Try to convert GitHub release URL to mirror if available
+	originalDownloadURL := downloadURL
+	if u.githubClient != nil {
+		if defaultClient, ok := u.githubClient.(*DefaultGitHubClient); ok && defaultClient.urls != nil && defaultClient.urls.FastestMirror != "" {
+			if mirrorURL, err := utils.ConvertReleaseURLToMirror(downloadURL, defaultClient.urls.FastestMirror); err == nil && mirrorURL != downloadURL {
+				downloadURL = mirrorURL
+				u.logger.Info("Using mirror for download",
+					zap.String("original", originalDownloadURL),
+					zap.String("mirror", downloadURL),
+					zap.String("mirrorBase", defaultClient.urls.FastestMirror))
+			} else {
+				u.logger.Debug("Could not convert to mirror URL",
+					zap.String("original", originalDownloadURL),
+					zap.String("mirrorBase", defaultClient.urls.FastestMirror),
+					zap.Error(err))
+			}
+		}
+	}
 
 	// Validate download URL
 	if _, err := url.Parse(downloadURL); err != nil {
@@ -274,6 +296,9 @@ func (u *Updater) downloadWithProgress(downloadURL string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, WrapError("download", fmt.Errorf("failed with status: %s", resp.Status))
 	}
+
+	u.logger.Info("Downloading from", zap.String("url", downloadURL))
+	fmt.Printf("Downloading from '%s' ...\n", downloadURL)
 
 	bar := progressbar.DefaultBytes(
 		resp.ContentLength,

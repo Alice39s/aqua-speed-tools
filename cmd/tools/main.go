@@ -8,6 +8,7 @@ import (
 	"aqua-speed-tools/internal/utils"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -41,8 +42,9 @@ func main() {
 
 // execute executes the main program logic
 func execute() error {
-	// 设置调试模式
+	// 设置调试模式并初始化日志
 	utils.IsDebug = debugMode
+	utils.ResetLogger()
 
 	// 初始化配置
 	if err := initConfig(); err != nil {
@@ -61,6 +63,11 @@ func execute() error {
 
 // initConfig initializes the configuration
 func initConfig() error {
+	// 首先加载配置文件
+	if err := config.LoadConfig(""); err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
 	cfg := config.ConfigReader
 
 	// 如果启用镜像模式，使用配置文件中的镜像设置
@@ -68,21 +75,29 @@ func initConfig() error {
 		utils.Info("正在使用 GitHub 镜像模式")
 
 		// 设置 API 镜像
-		if cfg.GithubAPIURL != "" {
-			githubAPIMagicURL = cfg.GithubAPIURL
+		if githubAPIMagicURL != "" {
 			cfg.GithubAPIBaseURL = githubAPIMagicURL
-			utils.Debug("使用 API 镜像",
-				zap.String("url", githubAPIMagicURL),
-				zap.String("base_url", cfg.GithubAPIBaseURL))
+			utils.Debug("使用命令行指定的 API 镜像",
+				zap.String("url", githubAPIMagicURL))
+		} else if cfg.GithubAPIMagicURL != "" {
+			cfg.GithubAPIBaseURL = cfg.GithubAPIMagicURL
+			utils.Debug("使用配置文件中的 API 镜像",
+				zap.String("url", cfg.GithubAPIMagicURL))
 		}
 
-		// 设置 Raw 镜像
+		// 测试并选择最快的 Raw 镜像
 		if len(cfg.GithubRawJsdelivrSet) > 0 {
-			githubRawMagicURL = cfg.GithubRawJsdelivrSet[0]
-			cfg.GithubRawBaseURL = githubRawMagicURL
-			utils.Debug("使用 Raw 镜像",
-				zap.String("url", githubRawMagicURL),
-				zap.String("base_url", cfg.GithubRawBaseURL))
+			mirrorTester := service.NewMirrorTester(utils.GetLogger(), 5*time.Second)
+			fastestMirror := mirrorTester.FindFastestMirror(cfg.GithubRawJsdelivrSet)
+
+			if fastestMirror != "" {
+				githubRawMagicURL = fastestMirror
+				cfg.GithubRawBaseURL = githubRawMagicURL
+				utils.Info("使用最快的 Raw 镜像",
+					zap.String("url", githubRawMagicURL))
+			} else {
+				utils.Warning("所有镜像都不可用，使用默认 GitHub URL")
+			}
 		}
 	}
 
@@ -103,7 +118,7 @@ func initConfig() error {
 			zap.String("仓库", repo),
 			zap.String("GitHub API URL", cfg.GithubAPIBaseURL),
 			zap.String("GitHub Raw URL", cfg.GithubRawBaseURL),
-			zap.String("GitHub API Magic URL", cfg.GithubAPIURL),
+			zap.String("GitHub API Magic URL", cfg.GithubAPIMagicURL),
 			zap.Any("GitHub Raw jsDelivr Set", cfg.GithubRawJsdelivrSet),
 			zap.Any("DNS over HTTPS Set", cfg.DNSOverHTTPSSet),
 			zap.Int("下载超时时间", cfg.DownloadTimeout),
@@ -123,7 +138,12 @@ func initServices() error {
 	}
 
 	// 初始化更新器
-	updater, err := updater.NewWithLocalVersion(version)
+	urls := utils.NewGitHubURLs(
+		cfg.GithubRawBaseURL,
+		cfg.GithubAPIBaseURL,
+		cfg.GithubRawJsdelivrSet,
+	)
+	updater, err := updater.NewWithLocalVersionAndURLs(version, urls)
 	if err != nil {
 		return fmt.Errorf("failed to create updater: %w", err)
 	}

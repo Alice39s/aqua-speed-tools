@@ -15,7 +15,20 @@ import (
 // initNodes initializes the speed test node list
 func (s *SpeedTest) initNodes() error {
 	owner, repo := splitRepo(config.DefaultGithubToolsRepo)
-	url := fmt.Sprintf("%s/%s/%s/main/presets/config.json", s.config.GithubRawBaseURL, owner, repo)
+
+	var url string
+	if len(s.config.GithubRawJsdelivrSet) > 0 {
+		mirrorURL := s.config.GithubRawJsdelivrSet[0]
+		url = fmt.Sprintf("%s/%s/%s@main/presets/config.json",
+			strings.TrimSuffix(mirrorURL, "/"),
+			owner,
+			repo)
+	} else {
+		url = fmt.Sprintf("%s/%s/%s/main/presets/config.json",
+			s.config.GithubRawBaseURL,
+			owner,
+			repo)
+	}
 
 	// Validate URL
 	if url == "" {

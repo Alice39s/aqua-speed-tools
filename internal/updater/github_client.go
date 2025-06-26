@@ -46,6 +46,11 @@ func NewDefaultGitHubClient(client *http.Client, logger *zap.Logger, version str
 
 // GetLatestRelease fetches the latest release from the GitHub API.
 func (c *DefaultGitHubClient) GetLatestRelease(ctx context.Context, apiURL string) (*GitHubRelease, error) {
+	c.logger.Debug("Making API request",
+		zap.String("url", apiURL),
+		zap.String("version", c.version),
+		zap.Any("urls", c.urls))
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -75,6 +80,10 @@ func (c *DefaultGitHubClient) GetLatestRelease(ctx context.Context, apiURL strin
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 10<<20)).Decode(&release); err != nil {
 		return nil, fmt.Errorf("failed to decode GitHub response: %w", err)
 	}
+
+	c.logger.Debug("Received release info",
+		zap.String("tag", release.TagName),
+		zap.Int("assets", len(release.Assets)))
 
 	return &release, nil
 }

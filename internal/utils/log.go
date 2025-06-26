@@ -23,19 +23,27 @@ func initLogger() *zap.Logger {
 		config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
 		config.Development = true
 		config.Sampling = nil // 禁用采样以显示所有日志
+		config.OutputPaths = []string{"stdout"}
+		config.ErrorOutputPaths = []string{"stderr"}
 	} else {
 		config = zap.NewProductionConfig()
 		config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		config.OutputPaths = []string{"stdout"}
+		config.ErrorOutputPaths = []string{"stderr"}
 	}
 
 	l, err := config.Build(
 		zap.AddCaller(),
-		zap.AddCallerSkip(1),
+		zap.AddCallerSkip(0),
 		zap.AddStacktrace(zapcore.ErrorLevel),
 	)
 	if err != nil {
-		// 如果初始化失败，使用基本配置
+		fmt.Printf("Failed to initialize logger: %v\n", err)
 		return zap.NewExample()
+	}
+
+	if IsDebug {
+		fmt.Println("Debug mode enabled, logger initialized with debug level")
 	}
 	return l
 }
@@ -134,4 +142,12 @@ func LogWarning(format string, args ...any) {
 
 func LogError(format string, args ...any) {
 	logger.Error(fmt.Sprintf(format, args...))
+}
+
+// Warning logs a warning message
+func Warning(msg string, fields ...zap.Field) {
+	if logger != nil {
+		logger.Warn(msg, fields...)
+	}
+	Yellow.Printf("[WARN] %s\n", msg)
 }
