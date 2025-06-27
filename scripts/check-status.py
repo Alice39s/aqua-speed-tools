@@ -76,27 +76,93 @@ def check_dependencies():
 
 
 def extract_hostname(url):
-    return urlparse(url).netloc
+    hostname = urlparse(url).netloc
+    log_debug(f"Extracted hostname '{hostname}' from URL '{url}'")
+    return hostname
+
+
+def resolve_dns(hostname):
+    """Resolve DNS for hostname and return IP addresses"""
+    global LAST_ERROR
+
+    try:
+        import socket
+
+        log_debug(f"Starting DNS resolution for hostname: {hostname}")
+
+        # Get address info
+        addr_info = socket.getaddrinfo(hostname, None)
+        ip_addresses = list(set([addr[4][0] for addr in addr_info]))
+
+        log_debug(f"DNS resolution successful for {hostname}:")
+        for ip in ip_addresses:
+            log_debug(f"  - {ip}")
+
+        return ip_addresses
+    except socket.gaierror as e:
+        LAST_ERROR = f"DNS resolution failed: {e}"
+        log_debug(f"DNS resolution failed for {hostname}: {e}")
+        return []
+    except Exception as e:
+        LAST_ERROR = f"DNS resolution error: {e}"
+        log_debug(f"DNS resolution error for {hostname}: {e}")
+        return []
 
 
 def test_icmp_ping(hostname):
     global LAST_ERROR
 
+    # First, resolve DNS in debug mode
+    if DEBUG:
+        ip_addresses = resolve_dns(hostname)
+        if not ip_addresses:
+            log_debug(f"Skipping ICMP ping due to DNS resolution failure")
+            return "❌ FAIL"
+        else:
+            log_debug(f"Will ping resolved IPs: {', '.join(ip_addresses)}")
+
     try:
         # Different ping command for Windows vs Unix-like systems
         param = "-n" if sys.platform.lower() == "win32" else "-c"
         cmd = ["ping", param, "3", "-W", "3000", hostname]
-        log_debug(f"Executing command: {' '.join(cmd)}")
+        log_debug(f"Executing ICMP ping command: {' '.join(cmd)}")
+
+        start_time = time.time()
         result = subprocess.run(cmd, check=True, capture_output=True, timeout=10)
-        log_debug(f"STDOUT: {result.stdout.decode().strip()}")
-        log_debug(f"STDERR: {result.stderr.decode().strip()}")
+        end_time = time.time()
+
+        stdout = result.stdout.decode().strip()
+        stderr = result.stderr.decode().strip()
+
+        log_debug(f"ICMP ping completed in {end_time - start_time:.2f}s")
+        log_debug(f"Return code: {result.returncode}")
+        log_debug(f"STDOUT: {stdout}")
+        if stderr:
+            log_debug(f"STDERR: {stderr}")
+
+        # Parse ping statistics if available
+        if DEBUG and stdout:
+            lines = stdout.split("\n")
+            for line in lines:
+                if "packet loss" in line.lower() or "transmitted" in line.lower():
+                    log_debug(f"Ping statistics: {line.strip()}")
+                elif "min/avg/max" in line.lower() or "round-trip" in line.lower():
+                    log_debug(f"Timing info: {line.strip()}")
+
         return "✅ PASS"
     except subprocess.TimeoutExpired:
         LAST_ERROR = "ICMP ping timeout (10s)"
+        log_debug(f"ICMP ping timeout after 10 seconds")
         return "❌ FAIL"
     except subprocess.CalledProcessError as e:
         output = e.stderr.decode()
+        stdout = e.stdout.decode()
         LAST_ERROR = "Network unreachable or timeout"
+
+        log_debug(f"ICMP ping failed with return code: {e.returncode}")
+        log_debug(f"Error output: {output}")
+        if stdout:
+            log_debug(f"Standard output: {stdout}")
 
         if "Name or service not known" in output:
             LAST_ERROR = "DNS resolution failed"
@@ -111,18 +177,49 @@ def test_icmp_ping(hostname):
 def test_tcp_ping(hostname, port):
     global LAST_ERROR
 
+    # Resolve DNS in debug mode
+    if DEBUG:
+        ip_addresses = resolve_dns(hostname)
+        if not ip_addresses:
+            log_debug(f"Skipping TCP ping due to DNS resolution failure")
+            return "❌ FAIL"
+        else:
+            log_debug(
+                f"Will test TCP connection to {hostname}:{port} -> {', '.join(ip_addresses)}"
+            )
+
     try:
+        log_debug(f"Creating TCP connection to {hostname}:{port} with 3s timeout")
+        start_time = time.time()
+
         sock = socket.create_connection((hostname, port), timeout=3)
+
+        end_time = time.time()
+        connection_time = end_time - start_time
+
+        # Get socket info for debug
+        local_addr = sock.getsockname()
+        peer_addr = sock.getpeername()
+
+        log_debug(f"TCP connection established in {connection_time:.3f}s")
+        log_debug(f"Local address: {local_addr[0]}:{local_addr[1]}")
+        log_debug(f"Peer address: {peer_addr[0]}:{peer_addr[1]}")
+
         sock.close()
+        log_debug(f"TCP connection closed successfully")
         return "✅ PASS"
-    except socket.gaierror:
+    except socket.gaierror as e:
         LAST_ERROR = "DNS resolution failed"
-    except ConnectionRefusedError:
+        log_debug(f"TCP ping DNS resolution failed: {e}")
+    except ConnectionRefusedError as e:
         LAST_ERROR = f"Port {port} closed or filtered"
-    except socket.timeout:
+        log_debug(f"TCP connection refused for {hostname}:{port} - {e}")
+    except socket.timeout as e:
         LAST_ERROR = f"Port {port} connection timeout (3s)"
-    except Exception:
+        log_debug(f"TCP connection timeout for {hostname}:{port} after 3s - {e}")
+    except Exception as e:
         LAST_ERROR = f"Port {port} connection failed"
+        log_debug(f"TCP connection failed for {hostname}:{port} - {e}")
 
     return "❌ FAIL"
 
@@ -132,20 +229,65 @@ def test_http_get(url):
 
     try:
         parsed = urlparse(url)
+        hostname = parsed.netloc
+        path = parsed.path or "/"
+
+        # Resolve DNS in debug mode
+        if DEBUG:
+            ip_addresses = resolve_dns(hostname)
+            if not ip_addresses:
+                log_debug(f"Skipping HTTP GET due to DNS resolution failure")
+                return "❌ FAIL"
+            else:
+                log_debug(
+                    f"Will make HTTP request to {hostname} -> {', '.join(ip_addresses)}"
+                )
+
+        log_debug(
+            f"Creating HTTP{'S' if parsed.scheme == 'https' else ''} connection to {hostname}"
+        )
+        log_debug(f"Request URL: {url}")
+        log_debug(f"Request path: {path}")
+
         conn = (
             http.client.HTTPSConnection(parsed.netloc, timeout=5)
             if parsed.scheme == "https"
             else http.client.HTTPConnection(parsed.netloc, timeout=5)
         )
+
         headers = {"User-Agent": USER_AGENT}
-        conn.request("GET", parsed.path or "/", headers=headers)
+        log_debug(f"Request headers: {headers}")
+
+        start_time = time.time()
+        conn.request("GET", path, headers=headers)
+
         response = conn.getresponse()
-        response.read(1024)  # Read some data
+        response_time = time.time() - start_time
+
+        log_debug(f"HTTP response received in {response_time:.3f}s")
+        log_debug(f"Response status: {response.status} {response.reason}")
+        log_debug(f"Response headers: {dict(response.getheaders())}")
+
+        # Read some data and log details
+        data = response.read(1024)
+        log_debug(f"Read {len(data)} bytes of response data")
+        if len(data) == 1024:
+            log_debug("Response has more data available (read limit reached)")
+
+        content_type = response.getheader("content-type", "unknown")
+        content_length = response.getheader("content-length", "unknown")
+        log_debug(f"Content-Type: {content_type}")
+        log_debug(f"Content-Length: {content_length}")
+
         conn.close()
+        log_debug("HTTP connection closed successfully")
         return "✅ PASS"
     except Exception as e:
         LAST_ERROR = "HTTP request failed"
         error_str = str(e)
+
+        log_debug(f"HTTP request failed with error: {e}")
+        log_debug(f"Error type: {type(e).__name__}")
 
         if "timeout" in error_str.lower():
             LAST_ERROR = "HTTP request timeout (5s)"
@@ -159,8 +301,11 @@ def test_http_get(url):
         return "❌ FAIL"
 
 
-def test_single_thread(url):
+def test_single_thread(url, thread_id=None):
     try:
+        thread_prefix = f"[Thread-{thread_id}] " if thread_id is not None else ""
+        log_debug(f"{thread_prefix}Starting HTTP request to {url}")
+
         parsed = urlparse(url)
         conn = (
             http.client.HTTPSConnection(parsed.netloc, timeout=2)
@@ -168,12 +313,21 @@ def test_single_thread(url):
             else http.client.HTTPConnection(parsed.netloc, timeout=2)
         )
         headers = {"User-Agent": USER_AGENT}
+
+        start_time = time.time()
         conn.request("GET", parsed.path or "/", headers=headers)
         response = conn.getresponse()
-        response.read(1024)
+        data = response.read(1024)
         conn.close()
+
+        elapsed = time.time() - start_time
+        log_debug(
+            f"{thread_prefix}Success - {response.status} {response.reason} in {elapsed:.3f}s, read {len(data)} bytes"
+        )
         return True
-    except:
+    except Exception as e:
+        thread_prefix = f"[Thread-{thread_id}] " if thread_id is not None else ""
+        log_debug(f"{thread_prefix}Failed - {type(e).__name__}: {e}")
         return False
 
 
@@ -182,22 +336,58 @@ def test_multithreaded_get(url):
     threads = 8
     success_count = 0
 
+    log_debug(f"Starting multi-threaded test with {threads} threads for {url}")
+
+    # Resolve DNS once in debug mode
+    if DEBUG:
+        hostname = extract_hostname(url)
+        ip_addresses = resolve_dns(hostname)
+        if not ip_addresses:
+            log_debug(f"Skipping multi-threaded test due to DNS resolution failure")
+            return "❌ FAIL"
+        else:
+            log_debug(f"Multi-threaded test will connect to: {', '.join(ip_addresses)}")
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
         # Set a 10 second timeout for the entire multi-threaded test
         try:
-            futures = [executor.submit(test_single_thread, url) for _ in range(threads)]
+            start_time = time.time()
+            futures = [
+                executor.submit(test_single_thread, url, i + 1) for i in range(threads)
+            ]
             results = []
-            for future in concurrent.futures.as_completed(futures, timeout=10):
-                results.append(future.result())
+
+            for i, future in enumerate(
+                concurrent.futures.as_completed(futures, timeout=10)
+            ):
+                result = future.result()
+                results.append(result)
+                log_debug(
+                    f"Thread {i+1} completed: {'SUCCESS' if result else 'FAILED'}"
+                )
+
             success_count = sum(results)
+            elapsed = time.time() - start_time
+
+            log_debug(f"Multi-threaded test completed in {elapsed:.3f}s")
+            log_debug(f"Results: {success_count}/{threads} threads successful")
+
         except concurrent.futures.TimeoutError:
+            elapsed = time.time() - start_time
             LAST_ERROR = "Multi-thread test timeout (10s)"
+            log_debug(f"Multi-threaded test timeout after {elapsed:.3f}s")
             return f"❌ FAIL (timeout)"
 
     if success_count >= 6:  # At least 75% success
+        log_debug(
+            f"Multi-threaded test passed with {success_count}/{threads} successful threads"
+        )
         return f"✅ PASS ({success_count}/{threads})"
     else:
         LAST_ERROR = f"Multi-thread test failed: only {success_count}/{threads} threads succeeded"
+        log_debug(
+            f"Multi-threaded test failed - insufficient success rate: {success_count}/{threads}"
+        )
         return f"❌ FAIL ({success_count}/{threads})"
 
 
@@ -262,37 +452,55 @@ def test_node(id, name, url, isp, node_type):
     hostname = extract_hostname(url)
     notes_array = []
 
+    log_debug(f"=== Starting tests for node {id} ===")
+    log_debug(f"Node details: {name} | {isp} | {node_type}")
+    log_debug(f"Target URL: {url}")
+    log_debug(f"Target hostname: {hostname}")
+
     print("    ICMP Ping: ", end="", flush=True)
     global LAST_ERROR
     LAST_ERROR = ""
+    log_debug("--- Starting ICMP Ping test ---")
     icmp_result = test_icmp_ping(hostname)
     print(icmp_result)
+    log_debug(f"ICMP Ping result: {icmp_result}")
     if "FAIL" in icmp_result and LAST_ERROR:
         notes_array.append(f"ICMP: {LAST_ERROR}")
+        log_debug(f"ICMP Ping error: {LAST_ERROR}")
 
     port = "443" if url.startswith("https://") else "80"
     print(f"    TCP Ping ({port}): ", end="", flush=True)
     LAST_ERROR = ""
+    log_debug(f"--- Starting TCP Ping test (port {port}) ---")
     tcp_result = test_tcp_ping(hostname, int(port))
     print(tcp_result)
+    log_debug(f"TCP Ping result: {tcp_result}")
     if "FAIL" in tcp_result and LAST_ERROR:
         notes_array.append(f"TCP: {LAST_ERROR}")
+        log_debug(f"TCP Ping error: {LAST_ERROR}")
 
     print("    HTTP GET: ", end="", flush=True)
     LAST_ERROR = ""
+    log_debug("--- Starting HTTP GET test ---")
     http_result = test_http_get(url)
     print(http_result)
+    log_debug(f"HTTP GET result: {http_result}")
     if "FAIL" in http_result and LAST_ERROR:
         notes_array.append(f"HTTP: {LAST_ERROR}")
+        log_debug(f"HTTP GET error: {LAST_ERROR}")
 
     print("    8-Thread GET: ", end="", flush=True)
     LAST_ERROR = ""
+    log_debug("--- Starting 8-Thread GET test ---")
     multi_result = test_multithreaded_get(url)
     print(multi_result)
+    log_debug(f"8-Thread GET result: {multi_result}")
     if "FAIL" in multi_result and LAST_ERROR:
         notes_array.append(f"Multi: {LAST_ERROR}")
+        log_debug(f"8-Thread GET error: {LAST_ERROR}")
 
     notes = "; ".join(notes_array) if notes_array else "All tests passed"
+    log_debug(f"Final notes: {notes}")
 
     add_report_line(
         id,
@@ -311,6 +519,7 @@ def test_node(id, name, url, isp, node_type):
         for result in [icmp_result, tcp_result, http_result, multi_result]
         if "PASS" in result
     )
+    log_debug(f"=== Node {id} testing completed: {passed}/4 tests passed ===")
     return passed
 
 
@@ -400,7 +609,9 @@ def run_tests():
 
 def main():
     global DEBUG
-    parser = argparse.ArgumentParser(description="Node Health Status Checker for Aqua Speed Tools")
+    parser = argparse.ArgumentParser(
+        description="Node Health Status Checker for Aqua Speed Tools"
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug output")
     args = parser.parse_args()
 

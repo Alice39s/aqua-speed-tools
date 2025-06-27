@@ -29,6 +29,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
+          sudo apt-get upgrade -y
           sudo apt-get install -y curl netcat-openbsd iputils-ping
 
       - name: Make script executable
