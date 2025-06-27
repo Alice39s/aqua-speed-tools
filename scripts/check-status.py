@@ -7,6 +7,7 @@ import socket
 import subprocess
 import tempfile
 import threading
+import signal
 from datetime import datetime
 from urllib.parse import urlparse
 import concurrent.futures
@@ -29,6 +30,7 @@ PROJECT_DIR = SCRIPT_DIR.parent
 CONFIG_FILE = PROJECT_DIR / "presets" / "config.json"
 REPORT_FILE = PROJECT_DIR / "node-report.md"
 LAST_ERROR = ""
+USER_AGENT = "Aqua-Speed-StatusChecker/1.0"
 
 
 def log_info(msg):
@@ -76,9 +78,12 @@ def test_icmp_ping(hostname):
     try:
         # Different ping command for Windows vs Unix-like systems
         param = "-n" if sys.platform.lower() == "win32" else "-c"
-        cmd = ["ping", param, "3", "-W", "5000", hostname]
-        subprocess.run(cmd, check=True, capture_output=True)
+        cmd = ["ping", param, "3", "-W", "3000", hostname]
+        result = subprocess.run(cmd, check=True, capture_output=True, timeout=10)
         return "✅ PASS"
+    except subprocess.TimeoutExpired:
+        LAST_ERROR = "ICMP ping timeout (10s)"
+        return "❌ FAIL"
     except subprocess.CalledProcessError as e:
         output = e.stderr.decode()
         LAST_ERROR = "Network unreachable or timeout"
@@ -97,7 +102,7 @@ def test_tcp_ping(hostname, port):
     global LAST_ERROR
 
     try:
-        sock = socket.create_connection((hostname, port), timeout=5)
+        sock = socket.create_connection((hostname, port), timeout=3)
         sock.close()
         return "✅ PASS"
     except socket.gaierror:
@@ -105,7 +110,7 @@ def test_tcp_ping(hostname, port):
     except ConnectionRefusedError:
         LAST_ERROR = f"Port {port} closed or filtered"
     except socket.timeout:
-        LAST_ERROR = f"Port {port} connection timeout"
+        LAST_ERROR = f"Port {port} connection timeout (3s)"
     except Exception:
         LAST_ERROR = f"Port {port} connection failed"
 
@@ -118,11 +123,11 @@ def test_http_get(url):
     try:
         parsed = urlparse(url)
         conn = (
-            http.client.HTTPSConnection(parsed.netloc, timeout=3)
+            http.client.HTTPSConnection(parsed.netloc, timeout=5)
             if parsed.scheme == "https"
-            else http.client.HTTPConnection(parsed.netloc, timeout=3)
+            else http.client.HTTPConnection(parsed.netloc, timeout=5)
         )
-        headers = {"User-Agent": "Aqua-Speed-StatusChecker/1.0"}
+        headers = {"User-Agent": USER_AGENT}
         conn.request("GET", parsed.path or "/", headers=headers)
         response = conn.getresponse()
         response.read(1024)  # Read some data
@@ -133,7 +138,7 @@ def test_http_get(url):
         error_str = str(e)
 
         if "timeout" in error_str.lower():
-            LAST_ERROR = "HTTP request timeout (3s)"
+            LAST_ERROR = "HTTP request timeout (5s)"
         elif "name resolution" in error_str.lower():
             LAST_ERROR = "DNS resolution failed"
         elif "connection refused" in error_str.lower():
@@ -148,11 +153,11 @@ def test_single_thread(url):
     try:
         parsed = urlparse(url)
         conn = (
-            http.client.HTTPSConnection(parsed.netloc, timeout=3)
+            http.client.HTTPSConnection(parsed.netloc, timeout=2)
             if parsed.scheme == "https"
-            else http.client.HTTPConnection(parsed.netloc, timeout=3)
+            else http.client.HTTPConnection(parsed.netloc, timeout=2)
         )
-        headers = {"User-Agent": "Aqua-Speed-StatusChecker/1.0"}
+        headers = {"User-Agent": USER_AGENT}
         conn.request("GET", parsed.path or "/", headers=headers)
         response = conn.getresponse()
         response.read(1024)
@@ -168,9 +173,16 @@ def test_multithreaded_get(url):
     success_count = 0
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = [executor.submit(test_single_thread, url) for _ in range(threads)]
-        results = [f.result() for f in futures]
-        success_count = sum(results)
+        # Set a 10 second timeout for the entire multi-threaded test
+        try:
+            futures = [executor.submit(test_single_thread, url) for _ in range(threads)]
+            results = []
+            for future in concurrent.futures.as_completed(futures, timeout=10):
+                results.append(future.result())
+            success_count = sum(results)
+        except concurrent.futures.TimeoutError:
+            LAST_ERROR = "Multi-thread test timeout (10s)"
+            return f"❌ FAIL (timeout)"
 
     if success_count >= 6:  # At least 75% success
         return f"✅ PASS ({success_count}/{threads})"
@@ -203,6 +215,37 @@ def add_report_line(id, name, isp, type, icmp, tcp, http, multithread, notes):
         f.write(
             f"| {id} | {name} | {isp} | {type} | {icmp} | {tcp} | {http} | {multithread} | {notes} |\n"
         )
+
+
+def timeout_handler(signum, frame):
+    raise TimeoutError("Node test timeout")
+
+
+def test_node_with_timeout(id, name, url, isp, node_type, timeout=60):
+    global LAST_ERROR
+
+    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(timeout)
+
+    try:
+        return test_node(id, name, url, isp, node_type)
+    except TimeoutError:
+        log_warning(f"Node test timeout after {timeout}s, skipping remaining tests")
+        add_report_line(
+            id,
+            name,
+            isp,
+            node_type,
+            "❌ TIMEOUT",
+            "❌ TIMEOUT",
+            "❌ TIMEOUT",
+            "❌ TIMEOUT",
+            f"Node test timeout after {timeout}s",
+        )
+        return 0
+    finally:
+        signal.alarm(0)  # Cancel the alarm
+        signal.signal(signal.SIGALRM, old_handler)  # Restore old handler
 
 
 def test_node(id, name, url, isp, node_type):
@@ -296,7 +339,7 @@ def run_tests():
         log_info(f"  Size: {size}MB, Threads: {threads}")
         log_info(f"  Location: {country}/{region}/{city}")
 
-        passed = test_node(node_id, name, url, isp, node_type)
+        passed = test_node_with_timeout(node_id, name, url, isp, node_type, timeout=60)
         passed_tests += passed
         total_tests += 4
 
