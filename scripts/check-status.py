@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import threading
 import signal
+import argparse
 from datetime import datetime
 from urllib.parse import urlparse
 import concurrent.futures
@@ -31,6 +32,7 @@ CONFIG_FILE = PROJECT_DIR / "presets" / "config.json"
 REPORT_FILE = PROJECT_DIR / "node-report.md"
 LAST_ERROR = ""
 USER_AGENT = "Aqua-Speed-StatusChecker/1.0"
+DEBUG = False
 
 
 def log_info(msg):
@@ -47,6 +49,11 @@ def log_warning(msg):
 
 def log_error(msg):
     print(f"{Colors.RED}[ERROR]{Colors.NC} {msg}")
+
+
+def log_debug(msg):
+    if DEBUG:
+        print(f"{Colors.YELLOW}[DEBUG]{Colors.NC} {msg}")
 
 
 def check_dependencies():
@@ -79,7 +86,10 @@ def test_icmp_ping(hostname):
         # Different ping command for Windows vs Unix-like systems
         param = "-n" if sys.platform.lower() == "win32" else "-c"
         cmd = ["ping", param, "3", "-W", "3000", hostname]
+        log_debug(f"Executing command: {' '.join(cmd)}")
         result = subprocess.run(cmd, check=True, capture_output=True, timeout=10)
+        log_debug(f"STDOUT: {result.stdout.decode().strip()}")
+        log_debug(f"STDERR: {result.stderr.decode().strip()}")
         return "✅ PASS"
     except subprocess.TimeoutExpired:
         LAST_ERROR = "ICMP ping timeout (10s)"
@@ -389,6 +399,15 @@ def run_tests():
 
 
 def main():
+    global DEBUG
+    parser = argparse.ArgumentParser(description="Node Health Status Checker for Aqua Speed Tools")
+    parser.add_argument("--debug", action="store_true", help="Enable debug output")
+    args = parser.parse_args()
+
+    if args.debug:
+        DEBUG = True
+        log_info("Debug mode enabled.")
+
     log_info("Node Health Status Checker - Aqua Speed Tools")
     log_info(f"Config file: {CONFIG_FILE}")
     log_info(f"Report file: {REPORT_FILE}")
