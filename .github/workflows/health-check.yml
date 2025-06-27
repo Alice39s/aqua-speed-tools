@@ -1,0 +1,69 @@
+name: Node Health Check
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    # Allow manual triggering
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl netcat-openbsd iputils-ping
+
+      - name: Make script executable
+        run: chmod +x scripts/check-status.py
+
+      - name: Run health check
+        run: |
+          cd "${{ github.workspace }}"
+          python3 scripts/check-status.py
+
+      - name: Check if report was generated
+        id: check_report
+        run: |
+          if [ -f "node-report.md" ]; then
+            echo "report_exists=true" >> $GITHUB_OUTPUT
+            echo "Report file exists"
+          else
+            echo "report_exists=false" >> $GITHUB_OUTPUT
+            echo "Report file not found"
+          fi
+
+      - name: Commit and push report
+        if: steps.check_report.outputs.report_exists == 'true'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(health): update node health status report"
+          file_pattern: "node-report.md"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+
+      - name: Upload report as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-health-report-${{ github.run_number }}
+          path: node-report.md
+          retention-days: 30
