@@ -37,7 +37,7 @@ jobs:
       - name: Run health check
         run: |
           cd "${{ github.workspace }}"
-          python3 scripts/check-status.py
+          python3 scripts/check-status.py --debug
 
       - name: Check if report was generated
         id: check_report
