@@ -14,7 +14,7 @@ on:
       - "go.mod"
       - "go.sum"
       - "configs/**"
-      - ".github/**"
+      - ".github/workflows/build.yml"
 
 jobs:
   build:
@@ -25,14 +25,7 @@ jobs:
       binary_name: ${{ steps.setup_env.outputs.BINARY_NAME }}
     strategy:
       matrix:
-        version:
-          [
-            "linux-amd64",
-            "linux-arm64",
-            "windows-amd64",
-            "darwin-amd64",
-            "darwin-arm64",
-          ]
+        version: ["linux-amd64", "linux-arm64", "windows-amd64", "darwin-amd64", "darwin-arm64"]
     steps:
       - uses: actions/checkout@v4
 
