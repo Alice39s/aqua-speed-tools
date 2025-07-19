@@ -1,6 +1,6 @@
 # Node Health Status Report
 
-Generated on: 2025-06-27 18:04:57
+Generated on: 2025-07-19 18:11:12
 
 ## Configuration File Analysis
 
@@ -14,8 +14,8 @@ Configuration file: `presets/config.json`
 | zju | 浙江大学 (Zhejiang University) | 教育网 (CERNET) | LibreSpeed | ❌ FAIL | ❌ FAIL | ❌ FAIL | ❌ FAIL (0/8) | ICMP: ICMP ping timeout (10s); TCP: Port 80 connection timeout (3s); HTTP: HTTP request failed; Multi: Multi-thread test failed: only 0/8 threads succeeded |
 | ustc | 中国科学技术大学 (USTC) | 教育网 (CERNET) | LibreSpeed | ❌ FAIL | ✅ PASS | ✅ PASS | ✅ PASS (8/8) | ICMP: ICMP ping timeout (10s) |
 | nuaa | 南京航空航天大学 (NUAA) | 教育网 (CERNET) | LibreSpeed | ❌ FAIL | ❌ FAIL | ❌ FAIL | ❌ FAIL (0/8) | ICMP: ICMP ping timeout (10s); TCP: Port 80 connection failed; HTTP: HTTP request failed; Multi: Multi-thread test failed: only 0/8 threads succeeded |
-| xcc | 四川西昌学院 (XCC) | 教育网 (CERNET) | LibreSpeed | ❌ FAIL | ❌ FAIL | ❌ FAIL | ❌ FAIL (0/8) | ICMP: DNS resolution failed; TCP: DNS resolution failed; HTTP: HTTP request failed; Multi: Multi-thread test failed: only 0/8 threads succeeded |
-| baiduyun | 百度云盘 (Baidu Netdisk) | 百度云 (Baidu Cloud) | SingleFile | ❌ FAIL | ✅ PASS | ✅ PASS | ✅ PASS (6/8) | ICMP: ICMP ping timeout (10s) |
+| xcc | 四川西昌学院 (XCC) | 教育网 (CERNET) | LibreSpeed | ❌ FAIL | ❌ FAIL | ❌ FAIL | ❌ FAIL | ICMP: DNS resolution failed: [Errno -2] Name or service not known; TCP: DNS resolution failed: [Errno -2] Name or service not known; HTTP: DNS resolution failed: [Errno -2] Name or service not known; Multi: DNS resolution failed: [Errno -2] Name or service not known |
+| baiduyun | 百度云盘 (Baidu Netdisk) | 百度云 (Baidu Cloud) | SingleFile | ❌ FAIL | ✅ PASS | ✅ PASS | ✅ PASS (8/8) | ICMP: ICMP ping timeout (10s) |
 | bilibili | 哔哩哔哩 (Bilibili) | 阿里云 (Alibaba Cloud) | SingleFile | ❌ FAIL | ✅ PASS | ✅ PASS | ✅ PASS (8/8) | ICMP: ICMP ping timeout (10s) |
 | arknights | 明日方舟 (Arknights) | 阿里云OSS (Alibaba Cloud OSS) | SingleFile | ❌ FAIL | ✅ PASS | ✅ PASS | ✅ PASS (8/8) | ICMP: ICMP ping timeout (10s) |
 | sina | 新浪主站 (Sina) | 新浪混合云 (Sina CDN) | SingleFile | ❌ FAIL | ✅ PASS | ✅ PASS | ✅ PASS (8/8) | ICMP: ICMP ping timeout (10s) |
