@@ -35,4 +35,11 @@ main
 
 *.md
 !README.md
-node-report.md
+
+# Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/

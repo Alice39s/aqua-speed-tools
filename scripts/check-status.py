@@ -4,13 +4,12 @@ import sys
 import json
 import time
 import socket
-import subprocess
-import tempfile
-import threading
 import signal
 import argparse
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote_plus
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 import concurrent.futures
 import http.client
 from pathlib import Path
@@ -57,22 +56,8 @@ def log_debug(msg):
 
 
 def check_dependencies():
-    required_cmds = ["curl", "ping", "nc"]
-    missing_deps = []
-
-    for cmd in required_cmds:
-        if not any(
-            os.path.exists(os.path.join(path, cmd))
-            for path in os.environ["PATH"].split(os.pathsep)
-        ):
-            missing_deps.append(cmd)
-
-    if missing_deps:
-        log_error(f"Missing dependencies: {' '.join(missing_deps)}")
-        log_info("Please install them:")
-        log_info(f"  macOS: brew install {' '.join(missing_deps)}")
-        log_info(f"  Debian/Ubuntu: apt-get install {' '.join(missing_deps)}")
-        sys.exit(1)
+    """Placeholder for future external dependency checks."""
+    return
 
 
 def extract_hostname(url):
@@ -110,69 +95,139 @@ def resolve_dns(hostname):
         return []
 
 
+def call_check_host_api(url, timeout=8):
+    global LAST_ERROR
+
+    headers = {"Accept": "application/json", "User-Agent": USER_AGENT}
+    request = Request(url, headers=headers)
+
+    log_debug(f"Calling Check-Host API: {url}")
+
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            encoding = response.headers.get_content_charset("utf-8")
+            raw = response.read().decode(encoding, errors="replace").strip()
+            log_debug(f"Check-Host API raw response: {raw}")
+            return json.loads(raw) if raw else {}
+    except HTTPError as e:
+        LAST_ERROR = f"Check-Host API HTTP {e.code}"
+        body = e.read().decode("utf-8", errors="replace") if e.fp else ""
+        log_debug(f"Check-Host API HTTP error {e.code}: {body}")
+    except URLError as e:
+        LAST_ERROR = f"Check-Host API network error: {e.reason}"
+        log_debug(f"Check-Host API network error: {e}")
+    except json.JSONDecodeError as e:
+        LAST_ERROR = "Invalid JSON from Check-Host API"
+        log_debug(f"Failed to decode JSON from Check-Host API: {e}")
+    except Exception as e:
+        LAST_ERROR = "Unexpected Check-Host API error"
+        log_debug(f"Unexpected error when calling Check-Host API: {e}")
+
+    return None
+
+
+def extract_ping_statuses(node_payload):
+    """Extract status strings (OK/TIMEOUT/...) from nested ping payload."""
+
+    statuses = []
+
+    def _walk(item):
+        if isinstance(item, list):
+            if item and isinstance(item[0], str):
+                statuses.append(item[0])
+            for sub in item:
+                _walk(sub)
+
+    _walk(node_payload)
+    return statuses
+
+
 def test_icmp_ping(hostname):
     global LAST_ERROR
 
-    # First, resolve DNS in debug mode
     if DEBUG:
         ip_addresses = resolve_dns(hostname)
-        if not ip_addresses:
-            log_debug(f"Skipping ICMP ping due to DNS resolution failure")
-            return "❌ FAIL"
+        if ip_addresses:
+            log_debug(f"Local DNS resolved {hostname} -> {', '.join(ip_addresses)}")
         else:
-            log_debug(f"Will ping resolved IPs: {', '.join(ip_addresses)}")
+            log_debug(
+                f"Local DNS resolution failed for {hostname}, relying on Check-Host"
+            )
 
-    try:
-        # Different ping command for Windows vs Unix-like systems
-        param = "-n" if sys.platform.lower() == "win32" else "-c"
-        cmd = ["ping", param, "3", "-W", "3000", hostname]
-        log_debug(f"Executing ICMP ping command: {' '.join(cmd)}")
+    encoded_host = quote_plus(hostname)
+    request_url = f"https://check-host.net/check-ping?host={encoded_host}&max_nodes=3"
 
-        start_time = time.time()
-        result = subprocess.run(cmd, check=True, capture_output=True, timeout=10)
-        end_time = time.time()
-
-        stdout = result.stdout.decode().strip()
-        stderr = result.stderr.decode().strip()
-
-        log_debug(f"ICMP ping completed in {end_time - start_time:.2f}s")
-        log_debug(f"Return code: {result.returncode}")
-        log_debug(f"STDOUT: {stdout}")
-        if stderr:
-            log_debug(f"STDERR: {stderr}")
-
-        # Parse ping statistics if available
-        if DEBUG and stdout:
-            lines = stdout.split("\n")
-            for line in lines:
-                if "packet loss" in line.lower() or "transmitted" in line.lower():
-                    log_debug(f"Ping statistics: {line.strip()}")
-                elif "min/avg/max" in line.lower() or "round-trip" in line.lower():
-                    log_debug(f"Timing info: {line.strip()}")
-
-        return "✅ PASS"
-    except subprocess.TimeoutExpired:
-        LAST_ERROR = "ICMP ping timeout (10s)"
-        log_debug(f"ICMP ping timeout after 10 seconds")
+    init_response = call_check_host_api(request_url)
+    if not init_response:
+        if not LAST_ERROR:
+            LAST_ERROR = "Failed to start Check-Host ping request"
         return "❌ FAIL"
-    except subprocess.CalledProcessError as e:
-        output = e.stderr.decode()
-        stdout = e.stdout.decode()
-        LAST_ERROR = "Network unreachable or timeout"
 
-        log_debug(f"ICMP ping failed with return code: {e.returncode}")
-        log_debug(f"Error output: {output}")
-        if stdout:
-            log_debug(f"Standard output: {stdout}")
-
-        if "Name or service not known" in output:
-            LAST_ERROR = "DNS resolution failed"
-        elif "Network is unreachable" in output:
-            LAST_ERROR = "Network unreachable"
-        elif "timeout" in output:
-            LAST_ERROR = "Connection timeout"
-
+    if not init_response.get("ok"):
+        LAST_ERROR = init_response.get("error", "Check-Host API returned ok=0")
+        log_debug(f"Check-Host API returned failure: {init_response}")
         return "❌ FAIL"
+
+    request_id = init_response.get("request_id")
+    nodes = init_response.get("nodes", {})
+    log_debug(
+        f"Check-Host request_id={request_id}, nodes={', '.join(nodes.keys()) or 'none'}"
+    )
+
+    if not request_id:
+        LAST_ERROR = "Check-Host API did not provide request_id"
+        return "❌ FAIL"
+
+    result_url = f"https://check-host.net/check-result/{request_id}"
+    max_attempts = 6
+    poll_result = None
+
+    for attempt in range(1, max_attempts + 1):
+        log_debug(f"Polling Check-Host result ({attempt}/{max_attempts})")
+        time.sleep(1)
+        poll_result = call_check_host_api(result_url)
+        if poll_result is None:
+            continue
+        if not isinstance(poll_result, dict):
+            log_debug("Unexpected Check-Host result payload, retrying...")
+            poll_result = None
+            continue
+
+        if any(payload for payload in poll_result.values()):
+            break
+        log_debug("Check-Host still collecting results, waiting...")
+        poll_result = None
+
+    if poll_result is None:
+        LAST_ERROR = "Check-Host result polling timeout"
+        log_debug("Unable to obtain Check-Host results before timeout")
+        return "❌ FAIL"
+
+    total_nodes = len(nodes) or len(poll_result) or 1
+    success_nodes = 0
+    failure_details = []
+
+    for node_name, payload in poll_result.items():
+        statuses = extract_ping_statuses(payload)
+        if statuses:
+            log_debug(f"{node_name} statuses: {', '.join(statuses)}")
+        else:
+            log_debug(f"{node_name} returned empty payload: {payload}")
+
+        if any(status.upper() == "OK" for status in statuses):
+            success_nodes += 1
+        elif payload is None:
+            failure_details.append(f"{node_name}: no data returned")
+        elif statuses:
+            failure_details.append(f"{node_name}: {statuses[0]}")
+        else:
+            failure_details.append(f"{node_name}: pending")
+
+    if success_nodes:
+        return f"✅ PASS ({success_nodes}/{total_nodes} nodes OK)"
+
+    LAST_ERROR = failure_details[0] if failure_details else "No Check-Host nodes reported OK"
+    return "❌ FAIL"
 
 
 def test_tcp_ping(hostname, port):
