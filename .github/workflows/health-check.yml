@@ -28,11 +28,11 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          apt update
-          apt install -y curl netcat-openbsd iputils-ping
+          sudo apt update
+          sudo apt install -y curl netcat-openbsd iputils-ping
 
       - name: Make script executable
-        run: chmod +x scripts/check-status.py
+        run: sudo chmod +x scripts/check-status.py
 
       - name: Run health check
         run: |
