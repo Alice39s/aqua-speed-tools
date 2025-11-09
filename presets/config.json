@@ -20,27 +20,6 @@
             "type": "Anycast"
         }
     },
-    "zju": {
-        "id": "zju",
-        "name": {
-            "zh": "浙江大学",
-            "en": "Zhejiang University"
-        },
-        "size": 100,
-        "isp": {
-            "zh": "教育网",
-            "en": "CERNET"
-        },
-        "type": "LibreSpeed",
-        "url": "http://speedtest.zju.edu.cn/",
-        "threads": 4,
-        "geoInfo": {
-            "countryCode": "CN",
-            "region": "浙江",
-            "city": "杭州",
-            "type": "教育网"
-        }
-    },
     "ustc": {
         "id": "ustc",
         "name": {
@@ -304,7 +283,7 @@
             "zh": "爱奇艺",
             "en": "iQIYI"
         },
-        "url": "https://mesh.if.iqiyi.com/player/upgrade/file/last/IQIYIsetup_app.exe",
+        "url": "https://dl-static.iqiyi.com/arm64ec/IQIYIsetup.exe",
         "threads": 8,
         "type": "SingleFile",
         "geoInfo": {

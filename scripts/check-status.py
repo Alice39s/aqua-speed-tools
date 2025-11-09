@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-import os
 import sys
 import json
 import time
 import socket
-import signal
 import argparse
+from dataclasses import dataclass
 from datetime import datetime
-from urllib.parse import urlparse, quote_plus
-from urllib.request import Request, urlopen
-from urllib.error import URLError, HTTPError
+from pathlib import Path
+from typing import List
+
 import concurrent.futures
 import http.client
-from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote_plus, urlparse
+from urllib.request import Request, urlopen
 
 
 # ANSI color codes
@@ -30,8 +31,38 @@ PROJECT_DIR = SCRIPT_DIR.parent
 CONFIG_FILE = PROJECT_DIR / "presets" / "config.json"
 REPORT_FILE = PROJECT_DIR / "node-report.md"
 LAST_ERROR = ""
-USER_AGENT = "Aqua-Speed-StatusChecker/1.0"
+USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 DEBUG = False
+
+DEFAULT_TEST_TIMEOUT = 60
+MULTI_THREAD_REQUESTS = 8
+CHECK_HOST_MAX_NODES = 3
+CHECK_HOST_POLL_INTERVALS = (0.0, 0.5, 0.8, 1.1, 1.6, 2.3)
+
+
+@dataclass(frozen=True)
+class NodeInfo:
+    node_id: str
+    name: str
+    isp: str
+    url: str
+    node_type: str
+    size: int
+    threads: int
+    country: str
+    region: str
+    city: str
+
+    @property
+    def location(self) -> str:
+        return f"{self.country}/{self.region}/{self.city}"
+
+
+def to_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def log_info(msg):
@@ -55,9 +86,49 @@ def log_debug(msg):
         print(f"{Colors.YELLOW}[DEBUG]{Colors.NC} {msg}")
 
 
-def check_dependencies():
-    """Placeholder for future external dependency checks."""
-    return
+def load_config() -> dict:
+    if not CONFIG_FILE.exists():
+        log_error(f"Configuration file not found: {CONFIG_FILE}")
+        sys.exit(1)
+
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError as exc:
+        log_error(f"Invalid JSON format in configuration file: {exc}")
+        sys.exit(1)
+
+
+def build_nodes(config: dict) -> List[NodeInfo]:
+    nodes: List[NodeInfo] = []
+
+    for node_id, node_data in config.items():
+        name_zh = node_data.get("name", {}).get("zh", node_id)
+        name_en = node_data.get("name", {}).get("en", node_id)
+        isp_zh = node_data.get("isp", {}).get("zh", "Unknown")
+        isp_en = node_data.get("isp", {}).get("en", "Unknown")
+        geo_info = node_data.get("geoInfo", {})
+
+        nodes.append(
+            NodeInfo(
+                node_id=node_id,
+                name=f"{name_zh} ({name_en})",
+                isp=f"{isp_zh} ({isp_en})",
+                url=node_data.get("url", ""),
+                node_type=node_data.get("type", "Unknown"),
+                size=to_int(node_data.get("size", 0)),
+                threads=to_int(node_data.get("threads", 0)),
+                country=geo_info.get("countryCode", "N/A"),
+                region=geo_info.get("region", "N/A"),
+                city=geo_info.get("city", "N/A"),
+            )
+        )
+
+    return nodes
+
+
+def load_nodes() -> List[NodeInfo]:
+    return build_nodes(load_config())
 
 
 def extract_hostname(url):
@@ -71,8 +142,6 @@ def resolve_dns(hostname):
     global LAST_ERROR
 
     try:
-        import socket
-
         log_debug(f"Starting DNS resolution for hostname: {hostname}")
 
         # Get address info
@@ -155,7 +224,10 @@ def test_icmp_ping(hostname):
             )
 
     encoded_host = quote_plus(hostname)
-    request_url = f"https://check-host.net/check-ping?host={encoded_host}&max_nodes=3"
+    request_url = (
+        "https://check-host.net/check-ping?host="
+        f"{encoded_host}&max_nodes={CHECK_HOST_MAX_NODES}"
+    )
 
     init_response = call_check_host_api(request_url)
     if not init_response:
@@ -179,12 +251,15 @@ def test_icmp_ping(hostname):
         return "❌ FAIL"
 
     result_url = f"https://check-host.net/check-result/{request_id}"
-    max_attempts = 6
     poll_result = None
 
-    for attempt in range(1, max_attempts + 1):
-        log_debug(f"Polling Check-Host result ({attempt}/{max_attempts})")
-        time.sleep(1)
+    for attempt, delay in enumerate(CHECK_HOST_POLL_INTERVALS, start=1):
+        if delay:
+            time.sleep(delay)
+
+        log_debug(
+            f"Polling Check-Host result ({attempt}/{len(CHECK_HOST_POLL_INTERVALS)})"
+        )
         poll_result = call_check_host_api(result_url)
         if poll_result is None:
             continue
@@ -203,7 +278,7 @@ def test_icmp_ping(hostname):
         log_debug("Unable to obtain Check-Host results before timeout")
         return "❌ FAIL"
 
-    total_nodes = len(nodes) or len(poll_result) or 1
+    total_nodes = len(nodes) or len(poll_result) or CHECK_HOST_MAX_NODES
     success_nodes = 0
     failure_details = []
 
@@ -357,21 +432,20 @@ def test_http_get(url):
         return "❌ FAIL"
 
 
-def test_single_thread(url, thread_id=None):
+def perform_single_get(parsed_url, headers, thread_id=None):
+    thread_prefix = f"[Thread-{thread_id}] " if thread_id is not None else ""
     try:
-        thread_prefix = f"[Thread-{thread_id}] " if thread_id is not None else ""
-        log_debug(f"{thread_prefix}Starting HTTP request to {url}")
-
-        parsed = urlparse(url)
-        conn = (
-            http.client.HTTPSConnection(parsed.netloc, timeout=2)
-            if parsed.scheme == "https"
-            else http.client.HTTPConnection(parsed.netloc, timeout=2)
+        log_debug(f"{thread_prefix}Starting HTTP request to {parsed_url.geturl()}")
+        connection_cls = (
+            http.client.HTTPSConnection
+            if parsed_url.scheme == "https"
+            else http.client.HTTPConnection
         )
-        headers = {"User-Agent": USER_AGENT}
+        conn = connection_cls(parsed_url.netloc, timeout=2)
+        path = parsed_url.path or "/"
 
         start_time = time.time()
-        conn.request("GET", parsed.path or "/", headers=headers)
+        conn.request("GET", path, headers=headers)
         response = conn.getresponse()
         data = response.read(1024)
         conn.close()
@@ -382,14 +456,13 @@ def test_single_thread(url, thread_id=None):
         )
         return True
     except Exception as e:
-        thread_prefix = f"[Thread-{thread_id}] " if thread_id is not None else ""
         log_debug(f"{thread_prefix}Failed - {type(e).__name__}: {e}")
         return False
 
 
 def test_multithreaded_get(url):
     global LAST_ERROR
-    threads = 8
+    threads = MULTI_THREAD_REQUESTS
     success_count = 0
 
     log_debug(f"Starting multi-threaded test with {threads} threads for {url}")
@@ -404,35 +477,41 @@ def test_multithreaded_get(url):
         else:
             log_debug(f"Multi-threaded test will connect to: {', '.join(ip_addresses)}")
 
+    parsed_url = urlparse(url)
+    headers = {"User-Agent": USER_AGENT}
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        # Set a 10 second timeout for the entire multi-threaded test
-        try:
-            start_time = time.time()
-            futures = [
-                executor.submit(test_single_thread, url, i + 1) for i in range(threads)
-            ]
-            results = []
+        futures = {
+            executor.submit(perform_single_get, parsed_url, headers, idx + 1): idx + 1
+            for idx in range(threads)
+        }
 
-            for i, future in enumerate(
-                concurrent.futures.as_completed(futures, timeout=10)
-            ):
-                result = future.result()
-                results.append(result)
-                log_debug(
-                    f"Thread {i+1} completed: {'SUCCESS' if result else 'FAILED'}"
-                )
+        start_time = time.time()
+        done, pending = concurrent.futures.wait(
+            futures.keys(), timeout=10, return_when=concurrent.futures.ALL_COMPLETED
+        )
 
-            success_count = sum(results)
-            elapsed = time.time() - start_time
-
-            log_debug(f"Multi-threaded test completed in {elapsed:.3f}s")
-            log_debug(f"Results: {success_count}/{threads} threads successful")
-
-        except concurrent.futures.TimeoutError:
+        if pending:
+            for future in pending:
+                future.cancel()
             elapsed = time.time() - start_time
             LAST_ERROR = "Multi-thread test timeout (10s)"
             log_debug(f"Multi-threaded test timeout after {elapsed:.3f}s")
-            return f"❌ FAIL (timeout)"
+            return "❌ FAIL (timeout)"
+
+        results = []
+        for future, thread_idx in futures.items():
+            result = future.result()
+            log_debug(
+                f"Thread {thread_idx} completed: {'SUCCESS' if result else 'FAILED'}"
+            )
+            results.append(result)
+
+        success_count = sum(results)
+        elapsed = time.time() - start_time
+
+        log_debug(f"Multi-threaded test completed in {elapsed:.3f}s")
+        log_debug(f"Results: {success_count}/{threads} threads successful")
 
     if success_count >= 6:  # At least 75% success
         log_debug(
@@ -445,6 +524,26 @@ def test_multithreaded_get(url):
             f"Multi-threaded test failed - insufficient success rate: {success_count}/{threads}"
         )
         return f"❌ FAIL ({success_count}/{threads})"
+
+
+def execute_test_step(
+    label: str,
+    note_label: str,
+    notes: List[str],
+    func,
+    *args,
+):
+    global LAST_ERROR
+    print(f"    {label}: ", end="", flush=True)
+    LAST_ERROR = ""
+    log_debug(f"--- Starting {label} ---")
+    outcome = func(*args)
+    print(outcome)
+    log_debug(f"{label} result: {outcome}")
+    if "FAIL" in outcome and LAST_ERROR:
+        notes.append(f"{note_label}: {LAST_ERROR}")
+        log_debug(f"{label} error: {LAST_ERROR}")
+    return outcome
 
 
 def init_report():
@@ -473,165 +572,112 @@ def add_report_line(id, name, isp, type, icmp, tcp, http, multithread, notes):
         )
 
 
-def timeout_handler(signum, frame):
-    raise TimeoutError("Node test timeout")
+def test_node_with_timeout(node: NodeInfo, timeout=DEFAULT_TEST_TIMEOUT):
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(test_node, node)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            log_warning(
+                f"Node test timeout after {timeout}s for {node.node_id}, skipping remaining tests"
+            )
+            add_report_line(
+                node.node_id,
+                node.name,
+                node.isp,
+                node.node_type,
+                "❌ TIMEOUT",
+                "❌ TIMEOUT",
+                "❌ TIMEOUT",
+                "❌ TIMEOUT",
+                f"Node test timeout after {timeout}s",
+            )
+            return 0
 
 
-def test_node_with_timeout(id, name, url, isp, node_type, timeout=60):
-    global LAST_ERROR
+def test_node(node: NodeInfo):
+    hostname = extract_hostname(node.url)
+    notes: List[str] = []
 
-    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(timeout)
-
-    try:
-        return test_node(id, name, url, isp, node_type)
-    except TimeoutError:
-        log_warning(f"Node test timeout after {timeout}s, skipping remaining tests")
-        add_report_line(
-            id,
-            name,
-            isp,
-            node_type,
-            "❌ TIMEOUT",
-            "❌ TIMEOUT",
-            "❌ TIMEOUT",
-            "❌ TIMEOUT",
-            f"Node test timeout after {timeout}s",
-        )
-        return 0
-    finally:
-        signal.alarm(0)  # Cancel the alarm
-        signal.signal(signal.SIGALRM, old_handler)  # Restore old handler
-
-
-def test_node(id, name, url, isp, node_type):
-    hostname = extract_hostname(url)
-    notes_array = []
-
-    log_debug(f"=== Starting tests for node {id} ===")
-    log_debug(f"Node details: {name} | {isp} | {node_type}")
-    log_debug(f"Target URL: {url}")
+    log_debug(f"=== Starting tests for node {node.node_id} ===")
+    log_debug(f"Node details: {node.name} | {node.isp} | {node.node_type}")
+    log_debug(f"Target URL: {node.url}")
     log_debug(f"Target hostname: {hostname}")
 
-    print("    ICMP Ping: ", end="", flush=True)
-    global LAST_ERROR
-    LAST_ERROR = ""
-    log_debug("--- Starting ICMP Ping test ---")
-    icmp_result = test_icmp_ping(hostname)
-    print(icmp_result)
-    log_debug(f"ICMP Ping result: {icmp_result}")
-    if "FAIL" in icmp_result and LAST_ERROR:
-        notes_array.append(f"ICMP: {LAST_ERROR}")
-        log_debug(f"ICMP Ping error: {LAST_ERROR}")
+    icmp_result = execute_test_step("ICMP Ping", "ICMP", notes, test_icmp_ping, hostname)
 
-    port = "443" if url.startswith("https://") else "80"
-    print(f"    TCP Ping ({port}): ", end="", flush=True)
-    LAST_ERROR = ""
-    log_debug(f"--- Starting TCP Ping test (port {port}) ---")
-    tcp_result = test_tcp_ping(hostname, int(port))
-    print(tcp_result)
-    log_debug(f"TCP Ping result: {tcp_result}")
-    if "FAIL" in tcp_result and LAST_ERROR:
-        notes_array.append(f"TCP: {LAST_ERROR}")
-        log_debug(f"TCP Ping error: {LAST_ERROR}")
+    port = 443 if node.url.startswith("https://") else 80
+    tcp_result = execute_test_step(
+        f"TCP Ping ({port})",
+        "TCP",
+        notes,
+        test_tcp_ping,
+        hostname,
+        int(port),
+    )
 
-    print("    HTTP GET: ", end="", flush=True)
-    LAST_ERROR = ""
-    log_debug("--- Starting HTTP GET test ---")
-    http_result = test_http_get(url)
-    print(http_result)
-    log_debug(f"HTTP GET result: {http_result}")
-    if "FAIL" in http_result and LAST_ERROR:
-        notes_array.append(f"HTTP: {LAST_ERROR}")
-        log_debug(f"HTTP GET error: {LAST_ERROR}")
+    http_result = execute_test_step("HTTP GET", "HTTP", notes, test_http_get, node.url)
+    multi_result = execute_test_step(
+        "8-Thread GET", "Multi", notes, test_multithreaded_get, node.url
+    )
 
-    print("    8-Thread GET: ", end="", flush=True)
-    LAST_ERROR = ""
-    log_debug("--- Starting 8-Thread GET test ---")
-    multi_result = test_multithreaded_get(url)
-    print(multi_result)
-    log_debug(f"8-Thread GET result: {multi_result}")
-    if "FAIL" in multi_result and LAST_ERROR:
-        notes_array.append(f"Multi: {LAST_ERROR}")
-        log_debug(f"8-Thread GET error: {LAST_ERROR}")
-
-    notes = "; ".join(notes_array) if notes_array else "All tests passed"
-    log_debug(f"Final notes: {notes}")
+    notes_text = "; ".join(notes) if notes else "All tests passed"
+    log_debug(f"Final notes: {notes_text}")
 
     add_report_line(
-        id,
-        name,
-        isp,
-        node_type,
+        node.node_id,
+        node.name,
+        node.isp,
+        node.node_type,
         icmp_result,
         tcp_result,
         http_result,
         multi_result,
-        notes,
+        notes_text,
     )
 
-    passed = sum(
-        1
-        for result in [icmp_result, tcp_result, http_result, multi_result]
-        if "PASS" in result
+    results = [icmp_result, tcp_result, http_result, multi_result]
+    passed = sum(1 for result in results if "PASS" in result)
+    log_debug(
+        f"=== Node {node.node_id} testing completed: {passed}/{len(results)} tests passed ==="
     )
-    log_debug(f"=== Node {id} testing completed: {passed}/4 tests passed ===")
     return passed
 
 
-def run_tests():
-    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        config = json.load(f)
-
-    total_tests = 0
+def run_tests(nodes: List[NodeInfo]):
+    total_nodes = len(nodes)
+    total_tests = total_nodes * 4
     passed_tests = 0
-    node_count = len(config)
 
     log_info("Starting node health status checks...")
 
-    for node_id, node_data in config.items():
-        node_count += 1
+    for index, node in enumerate(nodes, start=1):
+        log_info(f"Testing Node [{index}]: {node.node_id}")
+        log_info(f"  Name: {node.name}")
+        log_info(f"  ISP: {node.isp}")
+        log_info(f"  Type: {node.node_type}")
+        log_info(f"  URL: {node.url}")
+        log_info(f"  Size: {node.size}MB, Threads: {node.threads}")
+        log_info(f"  Location: {node.location}")
 
-        name_zh = node_data["name"]["zh"]
-        name_en = node_data["name"]["en"]
-        name = f"{name_zh} ({name_en})"
-        isp_zh = node_data["isp"]["zh"]
-        isp_en = node_data["isp"]["en"]
-        isp = f"{isp_zh} ({isp_en})"
-        url = node_data["url"]
-        node_type = node_data["type"]
-        size = node_data["size"]
-        threads = node_data["threads"]
-        country = node_data.get("geoInfo", {}).get("countryCode", "N/A")
-        region = node_data.get("geoInfo", {}).get("region", "N/A")
-        city = node_data.get("geoInfo", {}).get("city", "N/A")
-
-        log_info(f"Testing Node [{node_count}]: {node_id}")
-        log_info(f"  Name: {name}")
-        log_info(f"  ISP: {isp}")
-        log_info(f"  Type: {node_type}")
-        log_info(f"  URL: {url}")
-        log_info(f"  Size: {size}MB, Threads: {threads}")
-        log_info(f"  Location: {country}/{region}/{city}")
-
-        passed = test_node_with_timeout(node_id, name, url, isp, node_type, timeout=60)
+        passed = test_node_with_timeout(node, timeout=DEFAULT_TEST_TIMEOUT)
         passed_tests += passed
-        total_tests += 4
 
         print()  # Empty line for separation
 
-    # Add statistics to report
-    success_rate = (passed_tests * 100) // total_tests if total_tests > 0 else 0
+    failed_tests = total_tests - passed_tests
+    success_rate = (passed_tests * 100) // total_tests if total_tests else 0
 
     with open(REPORT_FILE, "a", encoding="utf-8") as f:
         f.write(
             f"""
 ## Statistics
 
-- Total Nodes: {node_count}
+- Total Nodes: {total_nodes}
 - Total Tests: {total_tests}
 - Passed: {passed_tests}
-- Failed: {total_tests - passed_tests}
+- Failed: {failed_tests}
 - Success Rate: {success_rate}%
 
 ## Health Status
@@ -647,10 +693,8 @@ def run_tests():
             f.write(f"🔴 **CRITICAL** - Success rate: {success_rate}%\n")
 
     log_success("Node health check completed!")
-    log_info(f"Total nodes: {node_count}")
-    log_info(
-        f"Total tests: {total_tests}, Passed: {passed_tests}, Failed: {total_tests - passed_tests}"
-    )
+    log_info(f"Total nodes: {total_nodes}")
+    log_info(f"Total tests: {total_tests}, Passed: {passed_tests}, Failed: {failed_tests}")
     log_info(f"Success rate: {success_rate}%")
 
     if success_rate >= 90:
@@ -679,21 +723,10 @@ def main():
     log_info(f"Config file: {CONFIG_FILE}")
     log_info(f"Report file: {REPORT_FILE}")
 
-    if not CONFIG_FILE.exists():
-        log_error(f"Configuration file not found: {CONFIG_FILE}")
-        sys.exit(1)
-
-    check_dependencies()
-
-    try:
-        with open(CONFIG_FILE, "r") as f:
-            json.load(f)
-    except json.JSONDecodeError:
-        log_error("Invalid JSON format in configuration file")
-        sys.exit(1)
+    nodes = load_nodes()
 
     init_report()
-    run_tests()
+    run_tests(nodes)
 
 
 if __name__ == "__main__":
