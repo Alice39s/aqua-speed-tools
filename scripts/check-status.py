@@ -92,7 +92,8 @@ def resolve_dns(hostname):
 
         # Get address info
         addr_info = socket.getaddrinfo(hostname, None)
-        ip_addresses = list(set([addr[4][0] for addr in addr_info]))
+        ip_addresses = [str(addr[4][0]) for addr in addr_info]
+        ip_addresses = list(set(ip_addresses))
 
         log_debug(f"DNS resolution successful for {hostname}:")
         for ip in ip_addresses:
