@@ -50,18 +50,22 @@ jobs:
             echo "Report file not found"
           fi
 
-      - name: Commit and push report
+      - name: Publish report to checker branch
         if: steps.check_report.outputs.report_exists == 'true'
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore(health): update node health status report"
-          file_pattern: "node-report.md"
-          commit_user_name: "github-actions[bot]"
-          commit_user_email: "github-actions[bot]@users.noreply.github.com"
-          commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-          branch: checker
-          create_branch: true
-          push_options: "--force"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          publish_dir=$(mktemp -d)
+          cp node-report.md "${publish_dir}/node-report.md"
+          cd "${publish_dir}"
+          git init
+          git checkout -b checker
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add node-report.md
+          git commit -m "chore(health): update node health status report"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" checker
 
       - name: Upload report as artifact
         if: always()
